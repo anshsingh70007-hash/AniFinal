@@ -1,0 +1,199 @@
+﻿--------- beginning of main
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:48.644 10623 10701 D DefaultAnimeRepository: }
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:49.659 10623 10882 D DefaultAnimeRepository: }
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:49.853 10623 10882 D DefaultAnimeRepository: }
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:50.044 10623 10880 D DefaultAnimeRepository: }
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:50.204 10623 10690 D DefaultAnimeRepository: }
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:50.376 10623 10690 D DefaultAnimeRepository: }
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:50.560 10623 10690 D DefaultAnimeRepository: }
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:51.637 10623 10690 D DefaultAnimeRepository: }
+07-08 18:54:52.447 10623 10623 D VRI[MainActivity]: visibilityChanged oldVisibility=true newVisibility=false
+07-08 18:54:52.513 10623 10623 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=false callback=android.app.Activity$$ExternalSyntheticLambda0@45d8294
+07-08 18:54:52.519 10623 10623 D ViewRootImpl: Skipping stats log for color mode
+07-08 18:54:53.121 10623 10637 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+07-08 18:54:53.121 10623 10637 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+07-08 18:54:53.165 10623 10623 W VibratorManager: Failed to retrieve vibrator ids; no vibrator manager service.
+07-08 18:54:53.855 10623 10901 D AniListApi: Response status: 200 OK
+07-08 18:54:53.865 10623 10690 D AniListApi: Response status: 200 OK
+07-08 18:54:53.877 10623 10649 D AniListApi: Response status: 200 OK
+07-08 18:54:54.205 10623 10667 E SurfaceSyncGroup: Failed to receive transaction ready in 1000ms. Marking SurfaceSyncGroup(wmsSync-VRI[MainActivity]#2) as ready
+07-08 18:54:54.207 10623 10667 E SurfaceSyncGroup: Failed to receive transaction ready in 1000ms. Marking SurfaceSyncGroup(VRI[MainActivity]#3) as ready
+07-08 18:54:54.259 10623 10628 I example.aniflow: Background concurrent mark compact GC freed 7466KB AllocSpace bytes, 29(2436KB) LOS objects, 49% free, 11MB/23MB, paused 1.237ms,1.295ms total 224.512ms
+07-08 18:54:54.765 10623 10623 I Choreographer: Skipped 95 frames!  The application may be doing too much work on its main thread.
+07-08 18:54:54.774 10623 10623 D InsetsController: hide(ime(), fromIme=false)
+07-08 18:54:54.774 10623 10623 I ImeTracker: com.example.aniflow:eea1279: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-08 18:54:54.787 10623 10634 I HWUI    : Davey! duration=1561ms; Flags=1, FrameTimelineVsyncId=18574272, IntendedVsync=33294160094380, Vsync=33294160094380, InputEventId=0, HandleInputStart=33294161678800, AnimationStart=33294161694200, PerformTraversalsStart=33294161717000, DrawStart=33295499700900, FrameDeadline=33294176761046, FrameStartTime=33294161668900, FrameInterval=16666666, WorkloadTarget=16666666, SyncQueued=33295504265600, SyncStart=33295545065100, IssueDrawCommandsStart=33295545283500, SwapBuffers=33295757406800, FrameCompleted=33295762780600, DequeueBufferDuration=26700, QueueBufferDuration=195300, GpuCompleted=33295762780600, SwapBuffersCompleted=33295758903500, DisplayPresentTime=281474976645120, CommandSubmissionCompleted=33295757406800, 
+07-08 18:54:54.809 10623 10634 I HWUI    : Davey! duration=1617ms; Flags=0, FrameTimelineVsyncId=18574287, IntendedVsync=33294176761046, Vsync=33295760094316, InputEventId=0, HandleInputStart=33295765715300, AnimationStart=33295765729900, PerformTraversalsStart=33295767537700, DrawStart=33295767593100, FrameDeadline=33295793427648, FrameStartTime=33295765487200, FrameInterval=16666666, WorkloadTarget=16666666, SyncQueued=33295770258800, SyncStart=33295770353200, IssueDrawCommandsStart=33295770394800, SwapBuffers=33295770844000, FrameCompleted=33295794001300, DequeueBufferDuration=19600, QueueBufferDuration=189600, GpuCompleted=33295794001300, SwapBuffersCompleted=33295771501600, DisplayPresentTime=0, CommandSubmissionCompleted=33295770844000, 
+07-08 18:54:55.470 10623 10901 W HWUI    : Image decoding logging dropped!
+07-08 18:54:55.483 10623 10916 W HWUI    : Image decoding logging dropped!
+07-08 18:54:55.516 10623 10928 W HWUI    : Image decoding logging dropped!
+07-08 18:54:55.553 10623 10942 W HWUI    : Image decoding logging dropped!
+07-08 18:54:55.578 10623 10904 W HWUI    : Image decoding logging dropped!
+07-08 18:54:56.268 10623 10933 D AniListApi: Response status: 200 OK
+07-08 18:54:57.297 10623 10921 D AniListApi: Response status: 200 OK
+07-08 18:54:57.307 10623 10930 D AniListApi: Response status: 200 OK
+07-08 18:54:57.322 10623 10907 D AniListApi: Response status: 200 OK
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:54:57.896 10623 10934 D DefaultAnimeRepository: }
+07-08 18:54:57.935 10623 10623 D MainScreenViewModel: checkForUpdates final: info=AppUpdateInfo(versionCode=31, versionName=1.7.14, updateUrl=https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk, updateNotes=Update release 1.7.14 enabling the redesigned glassmorphic user interface., forceUpdate=false, silentUpdate=false), current=31
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:55:05.922 10623 10934 D DefaultAnimeRepository: }
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:55:58.876 10623 10907 D DefaultAnimeRepository: }
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:55:59.457 10623 11114 D DefaultAnimeRepository: }
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:55:59.804 10623 10934 D DefaultAnimeRepository: }
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:55:59.990 10623 10934 D DefaultAnimeRepository: }
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:00.090 10623 10934 D DefaultAnimeRepository: }
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:00.345 10623 10905 D DefaultAnimeRepository: }
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:00.533 10623 10902 D DefaultAnimeRepository: }
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:00.745 10623 10933 D DefaultAnimeRepository: }
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:00.819 10623 10933 D DefaultAnimeRepository: }
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:01.034 10623 11115 D DefaultAnimeRepository: }
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository: checkUpdates raw JSON: {
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository:   "versionCode": 31,
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository:   "versionName": "1.7.14",
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository:   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.14.apk",
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository:   "updateNotes": "Update release 1.7.14 enabling the redesigned glassmorphic user interface.",
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository:   "forceUpdate": false,
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository:   "silentUpdate": false
+07-08 18:56:01.196 10623 10933 D DefaultAnimeRepository: }
+07-08 18:56:02.802 10623 10623 D VRI[MainActivity]: visibilityChanged oldVisibility=true newVisibility=false
+07-08 18:56:02.956 10623 10623 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=false callback=android.app.Activity$$ExternalSyntheticLambda0@f4bd37c
+07-08 18:56:02.966 10623 10623 D ViewRootImpl: Skipping stats log for color mode
