@@ -1,8 +1,8 @@
 {
-  "versionCode": 34,
-  "versionName": "1.7.17",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.17-redesign.apk",
-  "updateNotes": "TV landscape lock fix to resolve compatibility pillarbox/letterbox black bars on TV screens, and overscan padding adjustments.",
+  "versionCode": 35,
+  "versionName": "1.7.18",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.18-redesign.apk",
+  "updateNotes": "Disabled default focus indications/ripples and corrected layout clipping order to prevent rectangular artifacts and gray boxes, added resizeableActivity and fullscreen theme flags to ensure full aspect ratio TV coverage.",
   "forceUpdate": false,
   "silentUpdate": false
 }

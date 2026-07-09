@@ -230,18 +230,21 @@ fun TvSettingsRow(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    val baseModifier = Modifier
-        .fillMaxWidth()
-        .onFocusChanged { isFocused = it.isFocused }
-        .clickable { onClick() }
-
     val containerModifier = if (isRedesign) {
-        baseModifier
+        Modifier
+            .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
             .focusGlow(isFocused, shape = RoundedCornerShape(12.dp))
             .glassSurface(shape = RoundedCornerShape(12.dp), borderWidth = 1.dp, isFocused = isFocused)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onClick() }
             .padding(16.dp)
     } else {
-        baseModifier
+        Modifier
+            .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
             .clip(RoundedCornerShape(8.dp))
             .background(if (isFocused) PrimaryAccent else SurfaceCard)
             .border(
@@ -249,6 +252,7 @@ fun TvSettingsRow(
                 color = if (isFocused) SecondaryAccent else Color.Transparent,
                 shape = RoundedCornerShape(8.dp)
             )
+            .clickable { onClick() }
             .padding(16.dp)
     }
 

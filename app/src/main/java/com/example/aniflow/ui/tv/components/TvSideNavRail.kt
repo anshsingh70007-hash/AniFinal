@@ -152,18 +152,21 @@ fun TvTopNavBarItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    val baseModifier = Modifier
-        .focusRequester(focusRequester)
-        .onFocusChanged { isFocused = it.isFocused }
-        .clickable { onSelect() }
-        
     val itemModifier = if (isRedesign) {
-        baseModifier
+        Modifier
+            .focusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused }
             .focusGlow(isFocused, shape = RoundedCornerShape(20.dp))
             .glassSurface(shape = RoundedCornerShape(20.dp), borderWidth = 1.dp, isFocused = isSelected || isFocused)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onSelect() }
             .padding(horizontal = 16.dp, vertical = 8.dp)
     } else {
-        baseModifier
+        Modifier
+            .focusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused }
             .clip(RoundedCornerShape(20.dp))
             .background(
                 when {
@@ -172,6 +175,7 @@ fun TvTopNavBarItem(
                     else -> Color.Transparent
                 }
             )
+            .clickable { onSelect() }
             .padding(horizontal = 16.dp, vertical = 8.dp)
     }
 
