@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.aniflow"
         minSdk = 24
         targetSdk = 36
-        versionCode = 32
-        versionName = "1.7.15"
+        versionCode = 33
+        versionName = "1.7.16"
     }
 
     flavorDimensions += "ui"

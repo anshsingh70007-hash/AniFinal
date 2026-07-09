@@ -1,8 +1,8 @@
 {
-  "versionCode": 32,
-  "versionName": "1.7.15",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.15-redesign.apk",
-  "updateNotes": "Unified adaptive UI screens, redesigned Settings, shimmer placeholders, and network optimizations.",
+  "versionCode": 33,
+  "versionName": "1.7.16",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.16-redesign.apk",
+  "updateNotes": "Glassmorphic Settings redesign, player controls transition fade animations, next/prev episode playback state timestamp fixes, and auto-play next episode setting.",
   "forceUpdate": false,
   "silentUpdate": false
 }
