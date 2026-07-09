@@ -63,7 +63,7 @@ fun TvSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(PrimaryDark)
-            .padding(24.dp)
+            .padding(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 48.dp)
             .verticalScroll(rememberScrollState())
     ) {
         Text("Settings", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)

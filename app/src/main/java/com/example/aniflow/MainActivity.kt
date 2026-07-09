@@ -21,6 +21,9 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
 
     val deviceType = DeviceDetector.detect(this)
+    if (deviceType == DeviceType.TV) {
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+    }
     enableEdgeToEdge()
     setContent {
       CompositionLocalProvider(LocalDeviceType provides deviceType) {

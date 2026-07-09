@@ -100,7 +100,7 @@ fun MainScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 24.dp, bottom = 12.dp),
+                            .padding(top = 40.dp, bottom = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         TvTopNavBar(
