@@ -341,10 +341,18 @@ class AniLightProvider(private val client: HttpClient) {
                             else -> provId.uppercase()
                         }
 
+                        val cleanResolution = when {
+                            quality.contains("1080") -> "1080p"
+                            quality.contains("720") -> "720p"
+                            quality.contains("480") -> "480p"
+                            quality.contains("360") -> "360p"
+                            else -> "Auto"
+                        }
+
                         resolvedSources.add(
                             StreamingSource(
                                 url = finalUrl,
-                                quality = "$serverName - $quality (${type.uppercase()})",
+                                quality = "$serverName $cleanResolution (${type.uppercase()})",
                                 isM3U8 = isM3U8 || finalUrl.contains(".m3u8"),
                                 headers = mapOf(
                                     "Referer" to referrer,

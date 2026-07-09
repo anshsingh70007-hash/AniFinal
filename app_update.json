@@ -2,7 +2,7 @@
   "versionCode": 37,
   "versionName": "1.7.20",
   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.20-redesign.apk",
-  "updateNotes": "Fixed crash when opening video player by wrapping preference loads in try-catch and instantiating ViewModel correctly.",
+  "updateNotes": "Clean quality labels (e.g. 1080p SUB), resolution selector limit in options, fixed gradient overlay, and fixed TV control D-pad navigation.",
   "forceUpdate": false,
   "silentUpdate": false
 }

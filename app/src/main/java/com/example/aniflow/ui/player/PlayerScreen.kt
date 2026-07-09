@@ -99,6 +99,7 @@ fun PlayerScreen(
     
     val selectedSource by viewModel.selectedSource.collectAsStateWithLifecycle()
     val selectedSubtitle by viewModel.selectedSubtitle.collectAsStateWithLifecycle()
+    val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsStateWithLifecycle()
 
     var showServerSelector by remember { mutableStateOf(false) }
     var showSubtitleSelector by remember { mutableStateOf(false) }
@@ -293,6 +294,28 @@ fun PlayerScreen(
             }
             .build()
         exoPlayer.trackSelectionParameters = parameters
+    }
+
+    LaunchedEffect(selectedVideoQuality, exoPlayer) {
+        val parameters = exoPlayer.trackSelectionParameters.buildUpon()
+        when (selectedVideoQuality) {
+            "1080p" -> {
+                parameters.setMaxVideoSize(1920, 1080)
+            }
+            "720p" -> {
+                parameters.setMaxVideoSize(1280, 720)
+            }
+            "480p" -> {
+                parameters.setMaxVideoSize(854, 480)
+            }
+            "360p" -> {
+                parameters.setMaxVideoSize(640, 360)
+            }
+            else -> {
+                parameters.clearVideoSizeConstraints()
+            }
+        }
+        exoPlayer.trackSelectionParameters = parameters.build()
     }
 
     LaunchedEffect(exoPlayer, controlsVisible) {
@@ -531,28 +554,25 @@ fun PlayerScreen(
                     enter = fadeIn(tween(300)),
                     exit = fadeOut(tween(400))
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        Color.Black.copy(alpha = 0.7f),
-                                        Color.Transparent,
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.85f)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Gradient Background
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.Black.copy(alpha = 0.7f),
+                                            Color.Transparent,
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.85f)
+                                        )
                                     )
                                 )
-                            )
-                    )
-                }
+                        )
 
-                AnimatedVisibility(
-                    visible = controlsVisible,
-                    enter = slideInVertically { -it / 5 } + fadeIn(tween(200)),
-                    exit = slideOutVertically { -it / 5 } + fadeOut(tween(300))
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Main Controls Layout
+                        Box(modifier = Modifier.fillMaxSize()) {
                         // Top navigation bar
                         val topBarModifier = if (isRedesign) {
                             Modifier
@@ -748,12 +768,15 @@ fun PlayerScreen(
             }
         }
     }
+}
 
     if (showServerSelector && streamingSources != null) {
         QualitySelector(
             sources = streamingSources!!.sources,
             selectedSource = selectedSource,
             onSelect = { viewModel.selectSource(it) },
+            selectedVideoQuality = selectedVideoQuality,
+            onSelectVideoQuality = { viewModel.selectedVideoQuality.value = it },
             onDismiss = { showServerSelector = false }
         )
     }
@@ -818,12 +841,11 @@ fun TvPlayerControlItem(
     var isFocused by remember { mutableStateOf(false) }
     val modifier = Modifier
         .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-        .clip(RoundedCornerShape(8.dp))
+        .onFocusChanged { isFocused = it.isFocused }
+        .focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
         .let {
             if (isRedesign) {
-                it
-                    .focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
-                    .glassSurface(shape = RoundedCornerShape(8.dp), borderWidth = 1.dp, isFocused = isFocused)
+                it.glassSurface(shape = RoundedCornerShape(8.dp), borderWidth = 1.dp, isFocused = isFocused)
             } else {
                 it
                     .background(if (isFocused) PrimaryAccent else SurfaceCard)
@@ -834,8 +856,10 @@ fun TvPlayerControlItem(
                     )
             }
         }
-        .clickable { onClick() }
-        .onFocusChanged { isFocused = it.isFocused }
+        .clickable(
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null
+        ) { onClick() }
         .padding(horizontal = 16.dp, vertical = 8.dp)
 
     Box(

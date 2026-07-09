@@ -1,6 +1,7 @@
 package com.example.aniflow.ui.player.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,8 @@ fun QualitySelector(
     sources: List<StreamingSource>,
     selectedSource: StreamingSource?,
     onSelect: (StreamingSource) -> Unit,
+    selectedVideoQuality: String,
+    onSelectVideoQuality: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -43,12 +46,12 @@ fun QualitySelector(
         Surface(
             modifier = if (isRedesign) {
                 Modifier
-                    .width(280.dp)
+                    .width(320.dp)
                     .wrapContentHeight()
                     .glassSurface(shape = RoundedCornerShape(16.dp))
             } else {
                 Modifier
-                    .width(280.dp)
+                    .width(320.dp)
                     .wrapContentHeight()
             },
             shape = RoundedCornerShape(16.dp),
@@ -60,15 +63,26 @@ fun QualitySelector(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Select Quality",
+                    text = "Player Options",
                     color = TextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(16.dp))
+
+                // Section 1: Server
+                Text(
+                    text = "SELECT SERVER",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(Modifier.height(8.dp))
+
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.heightIn(max = 240.dp)
+                    modifier = Modifier.heightIn(max = 180.dp)
                 ) {
                     items(uniqueSources) { source ->
                         val isSelected = source.quality == selectedSource?.quality
@@ -91,7 +105,6 @@ fun QualitySelector(
                                 )
                                 .clickable {
                                     onSelect(source)
-                                    onDismiss()
                                 }
                                 .padding(12.dp)
                         } else {
@@ -101,7 +114,6 @@ fun QualitySelector(
                                 .background(if (isSelected) PrimaryAccent else Color.Transparent)
                                 .clickable {
                                     onSelect(source)
-                                    onDismiss()
                                 }
                                 .padding(12.dp)
                         }
@@ -119,8 +131,73 @@ fun QualitySelector(
                         }
                     }
                 }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Section 2: Quality Lock
+                Text(
+                    text = "RESOLUTION LIMIT",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(Modifier.height(8.dp))
+
+                val qualityOptions = listOf("Auto", "1080p", "720p", "480p", "360p")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    qualityOptions.forEach { option ->
+                        val isSelected = selectedVideoQuality == option
+                        var isFocused by remember { mutableStateOf(false) }
+
+                        val buttonModifier = if (isRedesign) {
+                            Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .onFocusChanged { isFocused = it.isFocused }
+                                .let { 
+                                    if (deviceType == com.example.aniflow.DeviceType.TV) {
+                                        it.focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
+                                    } else {
+                                        it
+                                    }
+                                }
+                                .glassSurface(
+                                    shape = RoundedCornerShape(8.dp), 
+                                    isFocused = isSelected || isFocused
+                                )
+                                .clickable {
+                                    onSelectVideoQuality(option)
+                                }
+                        } else {
+                            Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) PrimaryAccent else Color.Transparent)
+                                .border(1.dp, if (isSelected) Color.Transparent else SurfaceBorder, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    onSelectVideoQuality(option)
+                                }
+                        }
+
+                        Box(
+                            modifier = buttonModifier,
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = option,
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
-

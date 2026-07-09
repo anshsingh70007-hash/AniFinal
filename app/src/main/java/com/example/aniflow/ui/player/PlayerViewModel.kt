@@ -41,6 +41,7 @@ class PlayerViewModel(
     
     val selectedSource = MutableStateFlow<StreamingSource?>(null)
     val selectedSubtitle = MutableStateFlow<SubtitleTrack?>(null)
+    val selectedVideoQuality = MutableStateFlow("Auto")
 
     val autoSkipIntro = settingsStore.autoSkipIntro.stateIn(
         scope = viewModelScope,
