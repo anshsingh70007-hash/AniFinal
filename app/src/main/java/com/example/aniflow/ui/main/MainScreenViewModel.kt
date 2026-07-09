@@ -117,13 +117,6 @@ class MainScreenViewModel(
                 if (!force) {
                     val autoCheckEnabled = settingsStore.checkUpdatesStartup.first()
                     if (!autoCheckEnabled) return@launch
-
-                    val now = System.currentTimeMillis()
-                    val lastCheck = settingsStore.lastUpdateCheckTime.first()
-                    if (now - lastCheck < 24 * 60 * 60 * 1000L) {
-                        android.util.Log.d("MainScreenViewModel", "Skip update check, last checked within 24 hours")
-                        return@launch
-                    }
                 }
 
                 // Wait for network connection to establish on startup if not forced
