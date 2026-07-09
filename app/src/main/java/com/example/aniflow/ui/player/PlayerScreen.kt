@@ -77,13 +77,12 @@ fun PlayerScreen(
     repository: AnimeRepository,
     deviceType: DeviceType,
     watchHistoryStore: WatchHistoryStore,
-    onBack: () -> Unit,
-    viewModel: PlayerViewModel = run {
-        val context = LocalContext.current.applicationContext
-        viewModel { PlayerViewModel(repository, watchHistoryStore, SettingsStore(context)) }
-    }
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val viewModel: PlayerViewModel = viewModel {
+        PlayerViewModel(repository, watchHistoryStore, SettingsStore(context.applicationContext))
+    }
     val coroutineScope = rememberCoroutineScope()
     
     val anime by viewModel.anime.collectAsStateWithLifecycle()

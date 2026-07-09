@@ -1,8 +1,8 @@
 {
-  "versionCode": 36,
-  "versionName": "1.7.19",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.19-redesign.apk",
-  "updateNotes": "Enabled checking for updates on startup every time the app opens.",
+  "versionCode": 37,
+  "versionName": "1.7.20",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.20-redesign.apk",
+  "updateNotes": "Fixed crash when opening video player by wrapping preference loads in try-catch and instantiating ViewModel correctly.",
   "forceUpdate": false,
   "silentUpdate": false
 }

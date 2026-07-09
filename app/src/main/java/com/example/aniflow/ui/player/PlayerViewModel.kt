@@ -17,7 +17,11 @@ class PlayerViewModel(
     
     init {
         viewModelScope.launch {
-            playbackSpeed.value = settingsStore.defaultPlaybackSpeed.first()
+            try {
+                playbackSpeed.value = settingsStore.defaultPlaybackSpeed.first()
+            } catch (e: Exception) {
+                android.util.Log.e("PlayerViewModel", "Failed to get default playback speed", e)
+            }
         }
     }
     
