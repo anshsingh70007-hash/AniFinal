@@ -1,8 +1,8 @@
 {
-  "versionCode": 37,
-  "versionName": "1.7.20",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.20-redesign.apk",
-  "updateNotes": "Clean quality labels (e.g. 1080p SUB), resolution selector limit in options, fixed gradient overlay, and fixed TV control D-pad navigation.",
+  "versionCode": 39,
+  "versionName": "1.7.22",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.22-redesign.apk",
+  "updateNotes": "Stabilize video player: fix server switching loop, remove duplicate quality items, resolve audio distortions/lag, and align resolution constraints.",
   "forceUpdate": false,
   "silentUpdate": false
 }

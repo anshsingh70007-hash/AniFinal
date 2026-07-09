@@ -41,7 +41,7 @@ class PlayerViewModel(
     
     val selectedSource = MutableStateFlow<StreamingSource?>(null)
     val selectedSubtitle = MutableStateFlow<SubtitleTrack?>(null)
-    val selectedVideoQuality = MutableStateFlow("Auto")
+    val selectedVideoQuality = MutableStateFlow("auto")
 
     val autoSkipIntro = settingsStore.autoSkipIntro.stateIn(
         scope = viewModelScope,
@@ -64,6 +64,8 @@ class PlayerViewModel(
     val isEpisodeSwitch = MutableStateFlow(false)
 
     private val failedSources = mutableSetOf<String>()
+    private var lastErrorTimestamp = 0L
+    private val ERROR_COOLDOWN_MS = 2000L  // Minimum 2s between source switches
 
     fun loadAnimeDetails(animeId: Int, episodeNumber: Int) {
         viewModelScope.launch {
@@ -114,8 +116,11 @@ class PlayerViewModel(
             try {
                 val sources = repository.getStreamingSources(ep.id)
                 streamingSources.value = sources
-                val primarySource = sources.sources.firstOrNull { it.isM3U8 } ?: sources.sources.firstOrNull()
+                val primarySource = pickInitialSource(sources.sources)
                 selectedSource.value = primarySource
+                if (primarySource != null) {
+                    selectedVideoQuality.value = parseResolutionLabel(primarySource.quality)
+                }
                 selectedSubtitle.value = sources.subtitles.firstOrNull { it.lang.lowercase() == "en" } ?: sources.subtitles.firstOrNull()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -128,22 +133,48 @@ class PlayerViewModel(
     }
 
     fun handlePlaybackError(errorName: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastErrorTimestamp < ERROR_COOLDOWN_MS) {
+            errorMessage.value = "Playback error: $errorName. Tap to retry."
+            hasError.value = true
+            return
+        }
+        lastErrorTimestamp = now
+
         val currentSource = selectedSource.value ?: return
         failedSources.add(currentSource.url)
-        val isCurrentDub = currentSource.quality.contains("DUB", ignoreCase = true)
-        val sources = streamingSources.value?.sources ?: return
-        val nextSource = sources.find { src ->
+
+        // 1. Try backup URLs for the same quality tier
+        val backupUrl = currentSource.backupUrls.firstOrNull { it !in failedSources }
+        if (backupUrl != null) {
+            android.util.Log.d("PlayerViewModel", "Trying backup URL for ${currentSource.quality}")
+            selectedSource.value = currentSource.copy(
+                url = backupUrl,
+                backupUrls = currentSource.backupUrls.filter { it != backupUrl }
+            )
+            return
+        }
+
+        // 2. Fall back to another server/quality (Auto first, then same language)
+        val allSources = streamingSources.value?.sources.orEmpty()
+        val preferSub = isSubSource(currentSource)
+        val nextSource = allSources.firstOrNull { src ->
             src.url !in failedSources &&
-            src.quality.contains("DUB", ignoreCase = true) == isCurrentDub
-        }
-        
+                src.quality.contains("Auto", ignoreCase = true) &&
+                isSubSource(src) == preferSub
+        } ?: allSources.firstOrNull { src ->
+            src.url !in failedSources && isSubSource(src) == preferSub
+        } ?: allSources.firstOrNull { src -> src.url !in failedSources }
+
         if (nextSource != null) {
-            android.util.Log.d("PlayerViewModel", "Playback failed with $errorName. Trying next source: ${nextSource.quality}")
+            android.util.Log.d("PlayerViewModel", "Falling back to ${nextSource.quality}")
             selectedSource.value = nextSource
-        } else {
-            errorMessage.value = "Playback error: $errorName. All matching servers failed."
-            hasError.value = true
+            selectedVideoQuality.value = parseResolutionLabel(nextSource.quality)
+            return
         }
+
+        errorMessage.value = "Playback error: $errorName. All servers failed."
+        hasError.value = true
     }
 
     fun playNextEpisode() {
@@ -165,8 +196,68 @@ class PlayerViewModel(
     }
 
     fun selectSource(source: StreamingSource) {
+        if (selectedSource.value?.url == source.url) {
+            selectedVideoQuality.value = parseResolutionLabel(source.quality)
+            return
+        }
         failedSources.clear()
+        hasError.value = false
+        errorMessage.value = ""
         selectedSource.value = source
+        selectedVideoQuality.value = parseResolutionLabel(source.quality)
+    }
+
+    /** Switch to a source URL matching the requested resolution and current sub/dub preference. */
+    fun selectQualityByResolution(resolution: String) {
+        val sources = streamingSources.value?.sources ?: return
+        val preferSub = selectedSource.value?.let { isSubSource(it) } ?: true
+        val match = if (resolution.equals("auto", ignoreCase = true)) {
+            sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) && isSubSource(it) == preferSub }
+                ?: sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) }
+        } else {
+            findSourceForResolution(sources, resolution, preferSub)
+                ?: findSourceForResolution(sources, resolution, preferSub = !preferSub)
+                ?: sources.firstOrNull { parseResolutionLabel(it.quality).equals(resolution, ignoreCase = true) }
+        }
+        if (match != null) {
+            selectSource(match)
+        }
+    }
+
+    private fun pickInitialSource(sources: List<StreamingSource>): StreamingSource? {
+        if (sources.isEmpty()) return null
+        // Prefer adaptive Auto streams — they are the most reliable across providers
+        val autoSub = sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) && isSubSource(it) }
+        val autoAny = sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) }
+        return autoSub ?: autoAny ?: sources.first()
+    }
+
+    private fun findSourceForResolution(
+        sources: List<StreamingSource>,
+        resolution: String,
+        preferSub: Boolean
+    ): StreamingSource? {
+        val typeTag = if (preferSub) "(SUB)" else "(DUB)"
+        return sources.firstOrNull { src ->
+            src.quality.contains(typeTag, ignoreCase = true) &&
+                parseResolutionLabel(src.quality).equals(resolution, ignoreCase = true)
+        }
+    }
+
+    private fun isSubSource(source: StreamingSource): Boolean {
+        return source.quality.contains("(SUB)", ignoreCase = true) ||
+            !source.quality.contains("(DUB)", ignoreCase = true)
+    }
+
+    private fun parseResolutionLabel(quality: String): String {
+        return when {
+            quality.contains("1080", ignoreCase = true) -> "1080p"
+            quality.contains("720", ignoreCase = true) -> "720p"
+            quality.contains("480", ignoreCase = true) -> "480p"
+            quality.contains("360", ignoreCase = true) -> "360p"
+            quality.contains("Auto", ignoreCase = true) -> "auto"
+            else -> "auto"
+        }
     }
 
     fun selectSubtitle(subtitle: SubtitleTrack?) {

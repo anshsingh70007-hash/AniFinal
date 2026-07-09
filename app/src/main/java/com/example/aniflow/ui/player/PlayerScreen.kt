@@ -120,10 +120,16 @@ fun PlayerScreen(
 
     val httpDataSourceFactory = remember {
         androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(15000)
+            .setConnectTimeoutMs(20000)
+            .setReadTimeoutMs(20000)
+    }
+
+    val mediaSourceFactory = remember {
+        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+            AdBlockingDataSourceFactory(httpDataSourceFactory)
+        )
     }
 
     var activeEpisodeIndex by remember { mutableStateOf(currentEpisodeIndex) }
@@ -131,11 +137,15 @@ fun PlayerScreen(
 
     val exoPlayer = remember(animeId) {
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(50000, 120000, 5000, 10000)
-            .setBackBuffer(30000, false)
+            .setBufferDurationsMs(
+                50_000,
+                120_000,
+                2_500,
+                5_000
+            )
+            .setBackBuffer(30_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(AdBlockingDataSourceFactory(httpDataSourceFactory))
         
         val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
             .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -187,6 +197,7 @@ fun PlayerScreen(
                     viewModel.hasError.value = true
                 }
             }
+
         }
         exoPlayer.addListener(listener)
         onDispose {
@@ -213,17 +224,18 @@ fun PlayerScreen(
             viewModel.errorMessage.value = ""
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
-            delay(100)
+            delay(200)
             viewModel.isBuffering.value = true
-            val headers = source.headers ?: streamingSources?.headers
-            if (headers != null && headers.isNotEmpty()) {
-                httpDataSourceFactory.setDefaultRequestProperties(headers)
-            } else {
-                httpDataSourceFactory.setDefaultRequestProperties(emptyMap())
-            }
+
+            val headers = buildPlaybackHeaders(source, streamingSources?.headers)
+            httpDataSourceFactory.setDefaultRequestProperties(headers)
 
             val resolvedUrl = source.url
-            val isHls = resolvedUrl.contains(".m3u8") || resolvedUrl.contains("m3u8") || source.url.contains("proxy") || source.url.contains("anilight")
+            // Only declare HLS when the URL or source metadata confirms it.
+            // Treating all proxy URLs as HLS was breaking MP4 and single-quality streams.
+            val isHls = source.isM3U8 ||
+                resolvedUrl.contains(".m3u8", ignoreCase = true) ||
+                resolvedUrl.contains("index.txt", ignoreCase = true)
             val mediaItemBuilder = MediaItem.Builder()
                 .setUri(resolvedUrl)
                 .apply {
@@ -241,7 +253,10 @@ fun PlayerScreen(
             val subtitles = streamingSources?.subtitles ?: emptyList()
             val subtitleConfigs = subtitles.map { sub ->
                 MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.url))
-                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setMimeType(
+                        if (sub.url.contains(".ass", ignoreCase = true)) MimeTypes.TEXT_SSA
+                        else MimeTypes.TEXT_VTT
+                    )
                     .setLanguage(sub.lang)
                     .setLabel(sub.label)
                     .build()
@@ -265,14 +280,15 @@ fun PlayerScreen(
             }
             activeEpisodeIndex = currentEpisodeIndex
 
-            exoPlayer.setMediaItem(mediaItemBuilder.build())
-            exoPlayer.setPlaybackSpeed(playbackSpeed)
-
+            // Let ExoPlayer pick the best available track — each source URL is already quality-specific
             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                 .buildUpon()
                 .clearVideoSizeConstraints()
+                .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
                 .build()
 
+            exoPlayer.setMediaItem(mediaItemBuilder.build())
+            exoPlayer.setPlaybackSpeed(playbackSpeed)
             exoPlayer.prepare()
 
             if (resumePos > 0) {
@@ -284,7 +300,8 @@ fun PlayerScreen(
 
     LaunchedEffect(selectedSubtitle, exoPlayer) {
         val sub = selectedSubtitle
-        val parameters = exoPlayer.trackSelectionParameters
+        val currentParams = exoPlayer.trackSelectionParameters
+        val parameters = currentParams
             .buildUpon()
             .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, sub == null)
             .apply {
@@ -293,29 +310,9 @@ fun PlayerScreen(
                 }
             }
             .build()
-        exoPlayer.trackSelectionParameters = parameters
-    }
-
-    LaunchedEffect(selectedVideoQuality, exoPlayer) {
-        val parameters = exoPlayer.trackSelectionParameters.buildUpon()
-        when (selectedVideoQuality) {
-            "1080p" -> {
-                parameters.setMaxVideoSize(1920, 1080)
-            }
-            "720p" -> {
-                parameters.setMaxVideoSize(1280, 720)
-            }
-            "480p" -> {
-                parameters.setMaxVideoSize(854, 480)
-            }
-            "360p" -> {
-                parameters.setMaxVideoSize(640, 360)
-            }
-            else -> {
-                parameters.clearVideoSizeConstraints()
-            }
+        if (parameters != currentParams) {
+            exoPlayer.trackSelectionParameters = parameters
         }
-        exoPlayer.trackSelectionParameters = parameters.build()
     }
 
     LaunchedEffect(exoPlayer, controlsVisible) {
@@ -776,7 +773,7 @@ fun PlayerScreen(
             selectedSource = selectedSource,
             onSelect = { viewModel.selectSource(it) },
             selectedVideoQuality = selectedVideoQuality,
-            onSelectVideoQuality = { viewModel.selectedVideoQuality.value = it },
+            onSelectVideoQuality = { viewModel.selectQualityByResolution(it) },
             onDismiss = { showServerSelector = false }
         )
     }
@@ -925,3 +922,21 @@ private fun formatTime(ms: Long): String {
         String.format("%02d:%02d", minutes, seconds)
     }
 }
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun buildPlaybackHeaders(
+    source: StreamingSource,
+    globalHeaders: Map<String, String>?
+): Map<String, String> {
+    val merged = LinkedHashMap<String, String>()
+    globalHeaders?.forEach { (key, value) -> merged[key] = value }
+    source.headers?.forEach { (key, value) -> merged[key] = value }
+    if (!merged.containsKey("Referer")) {
+        merged["Referer"] = "https://anilight.live"
+    }
+    if (!merged.containsKey("Origin")) {
+        merged["Origin"] = "https://anilight.live"
+    }
+    return merged
+}
+

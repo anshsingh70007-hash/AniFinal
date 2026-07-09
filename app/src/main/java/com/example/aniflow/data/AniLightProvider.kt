@@ -95,7 +95,7 @@ data class AniLightTrack(
 
 class AniLightProvider(private val client: HttpClient) {
     private val json = NetworkModule.json
-    private val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     private val baseUrl = "https://api.anilight.live/api"
 
     suspend fun search(query: String): List<ProviderSearchResult> {
@@ -268,9 +268,29 @@ class AniLightProvider(private val client: HttpClient) {
             }
             
             if (resolvedSources.isNotEmpty()) {
+                // Deduplicate: keep only ONE source per quality+type combo
+                // Collect other provider URLs as backupUrls
+                val deduped = resolvedSources
+                    .groupBy { it.quality }  // Groups like "1080p (SUB)", "720p (DUB)", etc.
+                    .map { (_, sourcesForQuality) ->
+                        val primary = sourcesForQuality.first()
+                        val backups = sourcesForQuality.drop(1).map { it.url }
+                        primary.copy(backupUrls = backups)
+                    }
+                
+                // Sort: SUB first, then by resolution descending
+                val qualityOrder = mapOf("1080p" to 4, "720p" to 3, "480p" to 2, "360p" to 1, "Auto" to 0)
+                val sorted = deduped.sortedWith(
+                    compareByDescending<StreamingSource> { src ->
+                        if (src.quality.contains("(SUB)")) 1 else 0
+                    }.thenByDescending { src ->
+                        qualityOrder.entries.firstOrNull { (k, _) -> src.quality.contains(k) }?.value ?: 0
+                    }
+                )
+                
                 return EpisodeSourcesResponse(
-                    sources = resolvedSources.toList(),
-                    subtitles = resolvedSubtitles.toList(),
+                    sources = sorted,
+                    subtitles = resolvedSubtitles.distinctBy { it.url }.toList(),
                     headers = customHeaders.toMap()
                 )
             }
@@ -318,8 +338,10 @@ class AniLightProvider(private val client: HttpClient) {
                     val mappedUrls = if (rawUrl.contains("/cachesub/")) {
                         val folder = rawUrl.substringAfter("/cachesub/").substringBefore("/")
                         if (folder.isNotEmpty() && folder != rawUrl) {
-                            val subHost = subTrackUrl?.let { android.net.Uri.parse(it).host } ?: "ani10.nukitashi.top"
-                            listOf("https://$subHost/$folder/index.m3u8")
+                            val rawHost = try { android.net.Uri.parse(rawUrl).host } catch (e: Exception) { null }
+                            val subHost = subTrackUrl?.let { try { android.net.Uri.parse(it).host } catch (e: Exception) { null } }
+                            val finalHost = rawHost ?: subHost ?: "ani10.nukitashi.top"
+                            listOf("https://$finalHost/$folder/index.m3u8")
                         } else {
                             decryptUrl(rawUrl, provId)
                         }
@@ -327,19 +349,9 @@ class AniLightProvider(private val client: HttpClient) {
                         decryptUrl(rawUrl, provId)
                     }
                     mappedUrls.forEach { finalUrl ->
-                        val referrer = "https://anilight.live/"
+                        val referrer = "https://anilight.live"
                         customHeaders["Referer"] = referrer
-
-                        val serverName = when (provId.lowercase()) {
-                            "light" -> "LIGHT"
-                            "misa", "misora" -> "MISORA"
-                            "meg" -> "MEG"
-                            "near" -> "NEAR"
-                            "raye" -> "RAYE"
-                            "ryu" -> "RYU"
-                            "rem" -> "REM"
-                            else -> provId.uppercase()
-                        }
+                        customHeaders["Origin"] = referrer
 
                         val cleanResolution = when {
                             quality.contains("1080") -> "1080p"
@@ -349,14 +361,20 @@ class AniLightProvider(private val client: HttpClient) {
                             else -> "Auto"
                         }
 
+                        val isHlsStream = isM3U8 ||
+                            finalUrl.contains(".m3u8", ignoreCase = true) ||
+                            finalUrl.contains("index.txt", ignoreCase = true) ||
+                            src.type.equals("hls", ignoreCase = true)
+
                         resolvedSources.add(
                             StreamingSource(
                                 url = finalUrl,
-                                quality = "$serverName $cleanResolution (${type.uppercase()})",
-                                isM3U8 = isM3U8 || finalUrl.contains(".m3u8"),
+                                quality = "$cleanResolution (${type.uppercase()})",
+                                isM3U8 = isHlsStream,
                                 headers = mapOf(
                                     "Referer" to referrer,
-                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                    "Origin" to referrer,
+                                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                                 )
                             )
                         )

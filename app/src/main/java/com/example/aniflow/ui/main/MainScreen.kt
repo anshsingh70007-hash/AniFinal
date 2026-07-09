@@ -3,6 +3,7 @@ package com.example.aniflow.ui.main
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.onFocusChanged
+import com.example.aniflow.ui.redesign.theme.glassSurface
+import com.example.aniflow.ui.redesign.theme.focusGlow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -441,6 +445,9 @@ fun UpdateTakeoverScreen(
     var downloadProgress by remember { mutableStateOf(-2.0f) }
     var visible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val isRedesign = remember { context.packageName.endsWith(".redesign") }
+    val deviceType = com.example.aniflow.LocalDeviceType.current
 
     LaunchedEffect(Unit) {
         visible = true
@@ -449,7 +456,7 @@ fun UpdateTakeoverScreen(
     val executeWithAnimation: (() -> Unit) -> Unit = { callback ->
         scope.launch {
             visible = false
-            delay(250L) // Wait for exit animation
+            delay(250L)
             callback()
         }
     }
@@ -458,7 +465,7 @@ fun UpdateTakeoverScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(PrimaryDark.copy(alpha = 0.85f))
-            .clickable(enabled = !info.forceUpdate) {
+            .clickable(enabled = !info.forceUpdate && downloadProgress < 0f) {
                 executeWithAnimation { onDismiss() }
             },
         contentAlignment = Alignment.Center
@@ -468,13 +475,24 @@ fun UpdateTakeoverScreen(
             enter = fadeIn(tween(300)) + scaleIn(tween(300, easing = androidx.compose.animation.core.EaseInOutCubic), initialScale = 0.8f),
             exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.8f)
         ) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                modifier = Modifier
-                    .width(420.dp)
+            val cardModifier = if (isRedesign) {
+                Modifier
+                    .widthIn(max = 440.dp)
                     .padding(24.dp)
-                    .clickable(enabled = false) {}, // prevent click propagation
-                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                    .glassSurface(shape = RoundedCornerShape(20.dp))
+                    .clickable(enabled = false) {}
+            } else {
+                Modifier
+                    .widthIn(max = 440.dp)
+                    .padding(24.dp)
+                    .clickable(enabled = false) {}
+            }
+
+            Surface(
+                modifier = cardModifier,
+                shape = RoundedCornerShape(20.dp),
+                color = if (isRedesign) Color.Transparent else SurfaceCard,
+                tonalElevation = 16.dp
             ) {
                 Column(
                     modifier = Modifier
@@ -482,7 +500,7 @@ fun UpdateTakeoverScreen(
                         .padding(28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Header Icon / Banner
+                    // Header Icon
                     Box(
                         modifier = Modifier
                             .size(64.dp)
@@ -518,53 +536,66 @@ fun UpdateTakeoverScreen(
 
                     if (!info.updateNotes.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = PrimaryDark.copy(alpha = 0.5f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp)
-                            ) {
-                                Text(
-                                    text = "What's New:",
-                                    color = PrimaryAccentLight,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = info.updateNotes,
-                                    color = TextSecondary,
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
-                                )
-                            }
+                        val notesModifier = if (isRedesign) {
+                            Modifier
+                                .fillMaxWidth()
+                                .glassSurface(shape = RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .background(PrimaryDark.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        }
+                        Column(modifier = notesModifier) {
+                            Text(
+                                text = "What's New:",
+                                color = PrimaryAccentLight,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = info.updateNotes,
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(28.dp))
 
                     if (downloadProgress >= 0.0f) {
+                        // Downloading state
                         Text(
                             text = "Downloading Update: ${(downloadProgress * 100).toInt()}%",
                             color = TextPrimary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         LinearProgressIndicator(
-                            progress = { downloadProgress },
+                            progress = { downloadProgress.coerceIn(0f, 1f) },
                             color = PrimaryAccent,
-                            trackColor = PrimaryDark.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth()
+                            trackColor = if (isRedesign) Color.White.copy(alpha = 0.1f) else PrimaryDark.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (downloadProgress >= 0.99f) "Installing..." else "Please wait...",
+                            color = TextSecondary,
+                            fontSize = 12.sp
                         )
                     } else {
+                        // Action buttons
                         if (downloadProgress == -1.0f) {
                             Text(
                                 text = "Download failed. Please try again.",
-                                color = androidx.compose.ui.graphics.Color.Red,
+                                color = Color.Red,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -572,56 +603,46 @@ fun UpdateTakeoverScreen(
 
                         Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Button(
+                            // Download button with TV focus support
+                            UpdateButton(
+                                text = if (downloadProgress == -1.0f) "Retry Download" else "Download Now",
+                                isPrimary = true,
+                                isRedesign = isRedesign,
+                                deviceType = deviceType,
                                 onClick = {
                                     downloadProgress = 0.0f
                                     onDownload { progress ->
                                         downloadProgress = progress
                                     }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent),
-                                contentPadding = PaddingValues(vertical = 12.dp)
-                            ) {
-                                Text(
-                                    text = if (downloadProgress == -1.0f) "Retry Download" else "Download Now",
-                                    color = TextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                                }
+                            )
 
                             if (!info.forceUpdate) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
-                                    TextButton(
+                                    UpdateButton(
+                                        text = "Remind Later",
+                                        isPrimary = false,
+                                        isRedesign = isRedesign,
+                                        deviceType = deviceType,
                                         onClick = {
                                             executeWithAnimation { onDismiss() }
                                         }
-                                    ) {
-                                        Text(
-                                            text = "Remind Later",
-                                            color = TextSecondary,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-
-                                    TextButton(
+                                    )
+                                    UpdateButton(
+                                        text = "Skip Version",
+                                        isPrimary = false,
+                                        isRedesign = isRedesign,
+                                        deviceType = deviceType,
                                         onClick = {
                                             executeWithAnimation { onSkip() }
                                         }
-                                    ) {
-                                        Text(
-                                            text = "Skip Version",
-                                            color = TextSecondary,
-                                            fontSize = 14.sp
-                                        )
-                                    }
+                                    )
                                 }
                             }
                         }
@@ -629,6 +650,76 @@ fun UpdateTakeoverScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun UpdateButton(
+    text: String,
+    isPrimary: Boolean,
+    isRedesign: Boolean,
+    deviceType: com.example.aniflow.DeviceType,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    val buttonModifier = if (isRedesign) {
+        Modifier
+            .let { if (isPrimary) it.fillMaxWidth() else it }
+            .onFocusChanged { isFocused = it.isFocused }
+            .let {
+                if (deviceType == com.example.aniflow.DeviceType.TV) {
+                    it.focusGlow(isFocused, shape = RoundedCornerShape(12.dp))
+                } else {
+                    it
+                }
+            }
+            .glassSurface(
+                shape = RoundedCornerShape(12.dp),
+                borderWidth = if (isPrimary) 2.dp else 1.dp,
+                isFocused = isFocused || isPrimary
+            )
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onClick() }
+            .padding(horizontal = 20.dp, vertical = if (isPrimary) 14.dp else 10.dp)
+    } else {
+        Modifier
+            .let { if (isPrimary) it.fillMaxWidth() else it }
+            .onFocusChanged { isFocused = it.isFocused }
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                when {
+                    isPrimary -> PrimaryAccent
+                    isFocused -> PrimaryAccent.copy(alpha = 0.5f)
+                    else -> Color.Transparent
+                }
+            )
+            .let {
+                if (deviceType == com.example.aniflow.DeviceType.TV && isFocused) {
+                    it.border(2.dp, SecondaryAccent, RoundedCornerShape(12.dp))
+                } else {
+                    it
+                }
+            }
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) { onClick() }
+            .padding(horizontal = 20.dp, vertical = if (isPrimary) 14.dp else 10.dp)
+    }
+
+    Box(
+        modifier = buttonModifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (isPrimary || isFocused) TextPrimary else TextSecondary,
+            fontSize = if (isPrimary) 16.sp else 14.sp,
+            fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.Medium
+        )
     }
 }
 

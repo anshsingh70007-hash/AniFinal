@@ -7,7 +7,8 @@ data class StreamingSource(
     val url: String,
     val quality: String,
     val isM3U8: Boolean = true,
-    val headers: Map<String, String>? = null
+    val headers: Map<String, String>? = null,
+    val backupUrls: List<String> = emptyList()
 )
 
 @Serializable

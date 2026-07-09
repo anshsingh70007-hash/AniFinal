@@ -39,20 +39,32 @@ fun QualitySelector(
     val deviceType = com.example.aniflow.LocalDeviceType.current
 
     val uniqueSources = remember(sources) {
-        sources.distinctBy { it.url }
+        sources.distinctBy { it.quality }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val subSources = remember(uniqueSources) {
+        uniqueSources.filter { it.quality.contains("(SUB)", ignoreCase = true) }
+    }
+    val dubSources = remember(uniqueSources) {
+        uniqueSources.filter { it.quality.contains("(DUB)", ignoreCase = true) }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
         Surface(
             modifier = if (isRedesign) {
                 Modifier
-                    .width(320.dp)
-                    .wrapContentHeight()
+                    .widthIn(max = 360.dp)
+                    .heightIn(max = if (deviceType == com.example.aniflow.DeviceType.TV) 420.dp else 600.dp)
                     .glassSurface(shape = RoundedCornerShape(16.dp))
             } else {
                 Modifier
-                    .width(320.dp)
-                    .wrapContentHeight()
+                    .widthIn(max = 360.dp)
+                    .heightIn(max = if (deviceType == com.example.aniflow.DeviceType.TV) 420.dp else 600.dp)
             },
             shape = RoundedCornerShape(16.dp),
             color = if (isRedesign) Color.Transparent else SurfaceCard,
@@ -70,73 +82,139 @@ fun QualitySelector(
                 )
                 Spacer(Modifier.height(16.dp))
 
-                // Section 1: Server
-                Text(
-                    text = "SELECT SERVER",
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-                Spacer(Modifier.height(8.dp))
-
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.heightIn(max = 180.dp)
+                    modifier = Modifier.heightIn(max = 240.dp)
                 ) {
-                    items(uniqueSources) { source ->
-                        val isSelected = source.quality == selectedSource?.quality
-                        var isFocused by remember { mutableStateOf(false) }
-
-                        val itemModifier = if (isRedesign) {
-                            Modifier
-                                .fillMaxWidth()
-                                .onFocusChanged { isFocused = it.isFocused }
-                                .let { 
-                                    if (deviceType == com.example.aniflow.DeviceType.TV) {
-                                        it.focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
-                                    } else {
-                                        it
-                                    }
-                                }
-                                .glassSurface(
-                                    shape = RoundedCornerShape(8.dp), 
-                                    isFocused = isSelected || isFocused
-                                )
-                                .clickable {
-                                    onSelect(source)
-                                }
-                                .padding(12.dp)
-                        } else {
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) PrimaryAccent else Color.Transparent)
-                                .clickable {
-                                    onSelect(source)
-                                }
-                                .padding(12.dp)
-                        }
-
-                        Row(
-                            modifier = itemModifier,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    if (subSources.isNotEmpty()) {
+                        item {
                             Text(
-                                text = source.quality,
-                                color = TextPrimary,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 14.sp
+                                text = "SUBTITLE",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)
                             )
+                        }
+                        items(subSources) { source ->
+                            val cleanLabel = source.quality.replace(" (SUB)", "", ignoreCase = true).replace(" (DUB)", "", ignoreCase = true)
+                            val isSelected = source.url == selectedSource?.url
+                            var isFocused by remember { mutableStateOf(false) }
+
+                            val itemModifier = if (isRedesign) {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .onFocusChanged { isFocused = it.isFocused }
+                                    .let { 
+                                        if (deviceType == com.example.aniflow.DeviceType.TV) {
+                                            it.focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
+                                        } else {
+                                            it
+                                        }
+                                    }
+                                    .glassSurface(
+                                        shape = RoundedCornerShape(8.dp), 
+                                        isFocused = isSelected || isFocused
+                                    )
+                                    .clickable {
+                                        onSelect(source)
+                                        onDismiss()
+                                    }
+                                    .padding(12.dp)
+                            } else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) PrimaryAccent else Color.Transparent)
+                                    .clickable {
+                                        onSelect(source)
+                                        onDismiss()
+                                    }
+                                    .padding(12.dp)
+                            }
+
+                            Row(
+                                modifier = itemModifier,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = cleanLabel,
+                                    color = TextPrimary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (dubSources.isNotEmpty()) {
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "DUBBED",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)
+                            )
+                        }
+                        items(dubSources) { source ->
+                            val cleanLabel = source.quality.replace(" (SUB)", "", ignoreCase = true).replace(" (DUB)", "", ignoreCase = true)
+                            val isSelected = source.url == selectedSource?.url
+                            var isFocused by remember { mutableStateOf(false) }
+
+                            val itemModifier = if (isRedesign) {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .onFocusChanged { isFocused = it.isFocused }
+                                    .let { 
+                                        if (deviceType == com.example.aniflow.DeviceType.TV) {
+                                            it.focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
+                                        } else {
+                                            it
+                                        }
+                                    }
+                                    .glassSurface(
+                                        shape = RoundedCornerShape(8.dp), 
+                                        isFocused = isSelected || isFocused
+                                    )
+                                    .clickable {
+                                        onSelect(source)
+                                        onDismiss()
+                                    }
+                                    .padding(12.dp)
+                            } else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) PrimaryAccent else Color.Transparent)
+                                    .clickable {
+                                        onSelect(source)
+                                        onDismiss()
+                                    }
+                                    .padding(12.dp)
+                            }
+
+                            Row(
+                                modifier = itemModifier,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = cleanLabel,
+                                    color = TextPrimary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                     }
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                // Section 2: Quality Lock
+                // Section 2: Resolution — switches the actual stream URL, not ExoPlayer track limits
                 Text(
-                    text = "RESOLUTION LIMIT",
+                    text = "RESOLUTION",
                     color = TextSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -144,7 +222,7 @@ fun QualitySelector(
                 )
                 Spacer(Modifier.height(8.dp))
 
-                val qualityOptions = listOf("Auto", "1080p", "720p", "480p", "360p")
+                val qualityOptions = listOf("auto", "1080p", "720p", "480p", "360p")
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -171,6 +249,7 @@ fun QualitySelector(
                                 )
                                 .clickable {
                                     onSelectVideoQuality(option)
+                                    onDismiss()
                                 }
                         } else {
                             Modifier
@@ -181,6 +260,7 @@ fun QualitySelector(
                                 .border(1.dp, if (isSelected) Color.Transparent else SurfaceBorder, RoundedCornerShape(8.dp))
                                 .clickable {
                                     onSelectVideoQuality(option)
+                                    onDismiss()
                                 }
                         }
 
@@ -189,7 +269,7 @@ fun QualitySelector(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = option,
+                                text = option.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                                 color = TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
