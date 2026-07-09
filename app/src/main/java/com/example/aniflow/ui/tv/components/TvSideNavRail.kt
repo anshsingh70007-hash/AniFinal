@@ -114,6 +114,7 @@ fun TvTopNavBar(
             Modifier
                 .wrapContentWidth()
                 .height(64.dp)
+                .clip(RoundedCornerShape(32.dp))
                 .background(PrimaryDarker, RoundedCornerShape(32.dp))
                 .padding(horizontal = 16.dp)
         },

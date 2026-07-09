@@ -161,6 +161,13 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     hasPlayStarted = true
                 }
+                if (state == Player.STATE_ENDED) {
+                    val autoPlay = viewModel.autoPlayNextEpisode.value
+                    val nextIndex = viewModel.currentEpisodeIndex.value + 1
+                    if (autoPlay && nextIndex in viewModel.episodeList.value.indices) {
+                        viewModel.playNextEpisode()
+                    }
+                }
             }
             override fun onIsPlayingChanged(playing: Boolean) {
                 viewModel.isPlaying.value = playing
@@ -241,19 +248,22 @@ fun PlayerScreen(
             }
             mediaItemBuilder.setSubtitleConfigurations(subtitleConfigs)
 
-            val savedEntry = viewModel.getSavedProgressEntry(animeId)
-            val currentEpNum = episodeList.getOrNull(currentEpisodeIndex)?.number ?: -1
-            val isEpisodeChanged = currentEpisodeIndex != activeEpisodeIndex
-            val resumePos = if (!isEpisodeChanged && currentPos > 0) {
-                currentPos
-            } else if (savedEntry != null && savedEntry.episodeNumber == currentEpNum) {
-                savedEntry.progressMs
-            } else {
+            val isEpisodeSwitch = viewModel.isEpisodeSwitch.value
+            val resumePos = if (isEpisodeSwitch) {
+                viewModel.isEpisodeSwitch.value = false
                 0L
+            } else if (currentPos > 0) {
+                currentPos
+            } else {
+                val savedEntry = viewModel.getSavedProgressEntry(animeId)
+                val currentEpNum = episodeList.getOrNull(currentEpisodeIndex)?.number ?: -1
+                if (savedEntry != null && savedEntry.episodeNumber == currentEpNum) {
+                    savedEntry.progressMs
+                } else {
+                    0L
+                }
             }
-            if (isEpisodeChanged) {
-                activeEpisodeIndex = currentEpisodeIndex
-            }
+            activeEpisodeIndex = currentEpisodeIndex
 
             exoPlayer.setMediaItem(mediaItemBuilder.build())
             exoPlayer.setPlaybackSpeed(playbackSpeed)
@@ -519,15 +529,20 @@ fun PlayerScreen(
                 // Control Overlays
                 AnimatedVisibility(
                     visible = controlsVisible,
-                    enter = fadeIn(),
-                    exit = fadeOut()
+                    enter = fadeIn(tween(300)),
+                    exit = fadeOut(tween(400))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                    listOf(
+                                        Color.Black.copy(alpha = 0.7f),
+                                        Color.Transparent,
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.85f)
+                                    )
                                 )
                             )
                     )

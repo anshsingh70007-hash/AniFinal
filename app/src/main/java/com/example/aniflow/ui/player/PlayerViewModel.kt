@@ -15,6 +15,12 @@ class PlayerViewModel(
     private val settingsStore: SettingsStore
 ) : ViewModel() {
     
+    init {
+        viewModelScope.launch {
+            playbackSpeed.value = settingsStore.defaultPlaybackSpeed.first()
+        }
+    }
+    
     val anime = MutableStateFlow<Anime?>(null)
     val episodeList = MutableStateFlow<List<Episode>>(emptyList())
     val currentEpisodeIndex = MutableStateFlow(-1)
@@ -37,6 +43,20 @@ class PlayerViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = false
     )
+
+    val defaultPlaybackSpeed = settingsStore.defaultPlaybackSpeed.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = 1.0f
+    )
+
+    val autoPlayNextEpisode = settingsStore.autoPlayNextEpisode.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = true
+    )
+
+    val isEpisodeSwitch = MutableStateFlow(false)
 
     private val failedSources = mutableSetOf<String>()
 
@@ -124,6 +144,7 @@ class PlayerViewModel(
     fun playNextEpisode() {
         val nextIndex = currentEpisodeIndex.value + 1
         if (nextIndex in episodeList.value.indices) {
+            isEpisodeSwitch.value = true
             currentEpisodeIndex.value = nextIndex
             loadStreamingSourcesForIndex(nextIndex)
         }
@@ -132,6 +153,7 @@ class PlayerViewModel(
     fun playPrevEpisode() {
         val prevIndex = currentEpisodeIndex.value - 1
         if (prevIndex in episodeList.value.indices) {
+            isEpisodeSwitch.value = true
             currentEpisodeIndex.value = prevIndex
             loadStreamingSourcesForIndex(prevIndex)
         }

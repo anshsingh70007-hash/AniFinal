@@ -1,7 +1,7 @@
 {
   "versionCode": 32,
   "versionName": "1.7.15",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/Aniflow/main/releases/AniFinal_1.7.15-redesign.apk",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.15-redesign.apk",
   "updateNotes": "Unified adaptive UI screens, redesigned Settings, shimmer placeholders, and network optimizations.",
   "forceUpdate": false,
   "silentUpdate": false

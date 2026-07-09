@@ -43,6 +43,7 @@ import com.example.aniflow.ui.tv.*
 import com.example.aniflow.ui.tv.components.TvSideNavRail
 import com.example.aniflow.ui.tv.components.TvTopNavBar
 import com.example.aniflow.ui.redesign.*
+import com.example.aniflow.ui.redesign.theme.glassSurface
 
 @Composable
 fun MainScreen(
@@ -214,12 +215,10 @@ fun MainScreen(
                                     .padding(bottom = 16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Surface(
-                                    color = Color.Black.copy(alpha = 0.6f),
-                                    shape = RoundedCornerShape(28.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                                    modifier = Modifier.wrapContentSize(),
-                                    tonalElevation = 8.dp
+                                Box(
+                                    modifier = Modifier
+                                        .wrapContentSize()
+                                        .glassSurface(shape = RoundedCornerShape(28.dp), borderWidth = 1.dp)
                                 ) {
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),

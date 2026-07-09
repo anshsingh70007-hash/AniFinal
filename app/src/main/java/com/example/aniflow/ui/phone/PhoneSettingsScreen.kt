@@ -1,13 +1,16 @@
 package com.example.aniflow.ui.phone
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -17,7 +20,7 @@ import com.example.aniflow.data.WatchlistStore
 import com.example.aniflow.data.model.AppUpdateInfo
 import com.example.aniflow.data.repository.AnimeRepository
 import com.example.aniflow.theme.*
-import kotlinx.coroutines.flow.flowOf
+import com.example.aniflow.ui.redesign.theme.glassSurface
 import kotlinx.coroutines.launch
 
 @Composable
@@ -29,6 +32,7 @@ fun PhoneSettingsScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val isRedesign = remember { context.packageName.endsWith(".redesign") }
 
     var watchlistCleared by remember { mutableStateOf(false) }
     var historyCleared by remember { mutableStateOf(false) }
@@ -37,15 +41,22 @@ fun PhoneSettingsScreen(
     var updateCheckState by remember { mutableStateOf<String?>(null) }
     var foundUpdate by remember { mutableStateOf<AppUpdateInfo?>(null) }
 
-    val qualityPref by settingsStore.qualityPreference.collectAsState(initial = "auto")
     val languagePref by settingsStore.languagePreference.collectAsState(initial = "sub")
-    val autoSkipIntroPref by settingsStore.autoSkipIntro.collectAsState(initial = false)
+    val defaultSpeedPref by settingsStore.defaultPlaybackSpeed.collectAsState(initial = 1.0f)
+    val autoPlayNextPref by settingsStore.autoPlayNextEpisode.collectAsState(initial = true)
     val checkUpdatesPref by settingsStore.checkUpdatesStartup.collectAsState(initial = true)
-    val themePref by settingsStore.themeMode.collectAsState(initial = "system")
 
-    var qualityExpanded by remember { mutableStateOf(false) }
     var languageExpanded by remember { mutableStateOf(false) }
-    var themeExpanded by remember { mutableStateOf(false) }
+    var speedExpanded by remember { mutableStateOf(false) }
+
+    val appVersionName = remember {
+        try {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            packageInfo.versionName
+        } catch (e: Exception) {
+            "1.7.15"
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -54,50 +65,48 @@ fun PhoneSettingsScreen(
             .padding(16.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text("Settings", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(24.dp))
-        
-        // Preferred Quality
-        ListItem(
-            headlineContent = { Text("Quality Preference", color = TextPrimary) },
-            supportingContent = { Text("Default quality when loading video sources", color = TextSecondary) },
-            trailingContent = {
-                Box {
-                    TextButton(onClick = { qualityExpanded = true }) {
-                        Text(qualityPref.uppercase(), color = SecondaryAccent)
-                    }
-                    DropdownMenu(expanded = qualityExpanded, onDismissRequest = { qualityExpanded = false }) {
-                        listOf("auto", "1080p", "720p", "480p").forEach { quality ->
-                            DropdownMenuItem(
-                                text = { Text(quality.uppercase()) },
-                                onClick = {
-                                    coroutineScope.launch {
-                                        settingsStore.setQuality(quality)
-                                        qualityExpanded = false
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
+        Text(
+            text = "Settings",
+            color = TextPrimary,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 24.dp, top = 8.dp)
         )
-        Spacer(Modifier.height(8.dp))
+
+        // --- PLAYBACK SETTINGS SECTION ---
+        Text(
+            text = "Playback",
+            color = if (isRedesign) PrimaryAccentLight else TextSecondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
 
         // Preferred Language
-        ListItem(
-            headlineContent = { Text("Preferred Language", color = TextPrimary) },
-            supportingContent = { Text("Default audio and text preference", color = TextSecondary) },
-            trailingContent = {
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Preferred Language", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Default audio preference for episodes", color = TextSecondary, fontSize = 12.sp)
+                }
                 Box {
                     TextButton(onClick = { languageExpanded = true }) {
-                        Text(languagePref.uppercase(), color = SecondaryAccent)
+                        Text(languagePref.uppercase(), color = SecondaryAccent, fontWeight = FontWeight.Bold)
                     }
-                    DropdownMenu(expanded = languageExpanded, onDismissRequest = { languageExpanded = false }) {
+                    DropdownMenu(
+                        expanded = languageExpanded,
+                        onDismissRequest = { languageExpanded = false },
+                        modifier = Modifier.background(SurfaceCard)
+                    ) {
                         listOf("sub", "dub").forEach { lang ->
                             DropdownMenuItem(
-                                text = { Text(lang.uppercase()) },
+                                text = { Text(lang.uppercase(), color = TextPrimary) },
                                 onClick = {
                                     coroutineScope.launch {
                                         settingsStore.setLanguage(lang)
@@ -108,92 +117,104 @@ fun PhoneSettingsScreen(
                         }
                     }
                 }
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
-        )
-        Spacer(Modifier.height(8.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
 
-
-
-        // Theme Mode
-        ListItem(
-            headlineContent = { Text("Theme Mode", color = TextPrimary) },
-            supportingContent = { Text("Change the app's visual style", color = TextSecondary) },
-            trailingContent = {
+        // Default Playback Speed
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Default Playback Speed", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Initial speed for newly loaded episodes", color = TextSecondary, fontSize = 12.sp)
+                }
                 Box {
-                    TextButton(onClick = { themeExpanded = true }) {
-                        Text(themePref.uppercase(), color = SecondaryAccent)
+                    TextButton(onClick = { speedExpanded = true }) {
+                        Text("${defaultSpeedPref}x", color = SecondaryAccent, fontWeight = FontWeight.Bold)
                     }
-                    DropdownMenu(expanded = themeExpanded, onDismissRequest = { themeExpanded = false }) {
-                        listOf("system", "dark", "amoled").forEach { theme ->
+                    DropdownMenu(
+                        expanded = speedExpanded,
+                        onDismissRequest = { speedExpanded = false },
+                        modifier = Modifier.background(SurfaceCard)
+                    ) {
+                        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { speed ->
                             DropdownMenuItem(
-                                text = { Text(theme.uppercase()) },
+                                text = { Text("${speed}x", color = TextPrimary) },
                                 onClick = {
                                     coroutineScope.launch {
-                                        settingsStore.setThemeMode(theme)
-                                        themeExpanded = false
+                                        settingsStore.setDefaultPlaybackSpeed(speed)
+                                        speedExpanded = false
                                     }
                                 }
                             )
                         }
                     }
                 }
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
-        )
-        Spacer(Modifier.height(8.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
 
-        // Auto-Skip Intro
-        ListItem(
-            headlineContent = { Text("Auto-Skip Intro", color = TextPrimary) },
-            supportingContent = { Text("Automatically skip anime openings when timeline data is available", color = TextSecondary) },
-            trailingContent = {
+        // Auto-Play Next Episode
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Auto-Play Next Episode", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Load the next episode automatically when finished", color = TextSecondary, fontSize = 12.sp)
+                }
                 Switch(
-                    checked = autoSkipIntroPref,
+                    checked = autoPlayNextPref,
                     onCheckedChange = { value ->
                         coroutineScope.launch {
-                            settingsStore.setAutoSkipIntro(value)
+                            settingsStore.setAutoPlayNextEpisode(value)
                         }
                     },
-                    colors = SwitchDefaults.colors(checkedThumbColor = PrimaryAccent, checkedTrackColor = PrimaryAccentLight)
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = PrimaryAccent,
+                        checkedTrackColor = PrimaryAccentLight.copy(alpha = 0.5f)
+                    )
                 )
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
-        )
-        Spacer(Modifier.height(8.dp))
+            }
+        }
+        Spacer(Modifier.height(24.dp))
 
-        // Check for updates automatically on startup
-        ListItem(
-            headlineContent = { Text("Check Updates on Startup", color = TextPrimary) },
-            supportingContent = { Text("Automatically check for new versions when the app starts", color = TextSecondary) },
-            trailingContent = {
-                Switch(
-                    checked = checkUpdatesPref,
-                    onCheckedChange = { value ->
-                        coroutineScope.launch {
-                            settingsStore.setCheckUpdatesStartup(value)
-                        }
-                    },
-                    colors = SwitchDefaults.colors(checkedThumbColor = PrimaryAccent, checkedTrackColor = PrimaryAccentLight)
-                )
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
+        // --- DATA MANAGEMENT SECTION ---
+        Text(
+            text = "Data Management",
+            color = if (isRedesign) PrimaryAccentLight else TextSecondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
-        Spacer(Modifier.height(16.dp))
-        
-        Text("Data Management", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        
-        // Clear Watch History
-        ListItem(
-            headlineContent = { Text("Clear Watch History", color = TextPrimary) },
-            supportingContent = { 
-                Text(
-                    if (historyCleared) "History cleared successfully!" else "Delete all recently watched progress", 
-                    color = if (historyCleared) SuccessGreen else TextSecondary
-                ) 
-            },
-            trailingContent = {
+
+        // Clear History
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Clear Watch History", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = if (historyCleared) "History cleared successfully!" else "Delete all recently watched progress",
+                        color = if (historyCleared) SuccessGreen else TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
                 Button(
                     onClick = {
                         watchHistoryStore.clearHistory()
@@ -201,23 +222,29 @@ fun PhoneSettingsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TertiaryAccent)
                 ) {
-                    Text("Clear", color = TextPrimary)
+                    Text("Clear", color = TextPrimary, fontWeight = FontWeight.Bold)
                 }
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
-        )
-        Spacer(Modifier.height(8.dp))
-        
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+
         // Clear Watchlist
-        ListItem(
-            headlineContent = { Text("Clear Watchlist", color = TextPrimary) },
-            supportingContent = { 
-                Text(
-                    if (watchlistCleared) "Watchlist cleared successfully!" else "Delete all bookmarked anime", 
-                    color = if (watchlistCleared) SuccessGreen else TextSecondary
-                ) 
-            },
-            trailingContent = {
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Clear Watchlist", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = if (watchlistCleared) "Watchlist cleared successfully!" else "Delete all bookmarked anime",
+                        color = if (watchlistCleared) SuccessGreen else TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
                 Button(
                     onClick = {
                         coroutineScope.launch {
@@ -227,49 +254,95 @@ fun PhoneSettingsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TertiaryAccent)
                 ) {
-                    Text("Clear", color = TextPrimary)
+                    Text("Clear", color = TextPrimary, fontWeight = FontWeight.Bold)
                 }
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+
+        // --- UPDATES SECTION ---
+        Text(
+            text = "Updates & Version",
+            color = if (isRedesign) PrimaryAccentLight else TextSecondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
-        Spacer(Modifier.height(16.dp))
 
-        // --- Check for Updates ---
-        Text("Updates", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-
-        ListItem(
-            headlineContent = { Text("Check for Updates", color = TextPrimary) },
-            supportingContent = {
-                Text(
-                    when (updateCheckState) {
-                        "checking" -> "Checking for updates..."
-                        "up_to_date" -> "You're on the latest version!"
-                        "update_available" -> "Version ${foundUpdate?.versionName} available! ${foundUpdate?.updateNotes ?: ""}"
-                        else -> "Tap to check if a new version is available"
+        // Check updates on startup
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Check Updates on Startup", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Check for new versions automatically when opening", color = TextSecondary, fontSize = 12.sp)
+                }
+                Switch(
+                    checked = checkUpdatesPref,
+                    onCheckedChange = { value ->
+                        coroutineScope.launch {
+                            settingsStore.setCheckUpdatesStartup(value)
+                        }
                     },
-                    color = when (updateCheckState) {
-                        "up_to_date" -> SuccessGreen
-                        "update_available" -> SecondaryAccent
-                        "checking" -> PrimaryAccent
-                        else -> TextSecondary
-                    },
-                    fontSize = 12.sp
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = PrimaryAccent,
+                        checkedTrackColor = PrimaryAccentLight.copy(alpha = 0.5f)
+                    )
                 )
-            },
-            trailingContent = {
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // Check for updates button
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Check for Updates", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = when (updateCheckState) {
+                            "checking" -> "Checking server for new builds..."
+                            "up_to_date" -> "You're running the latest build!"
+                            "update_available" -> "Update v${foundUpdate?.versionName} is available!"
+                            else -> "Check if a new version is available"
+                        },
+                        color = when (updateCheckState) {
+                            "checking" -> PrimaryAccentLight
+                            "up_to_date" -> SuccessGreen
+                            "update_available" -> SecondaryAccent
+                            else -> TextSecondary
+                        },
+                        fontSize = 12.sp
+                    )
+                }
                 if (updateCheckState == "update_available" && foundUpdate != null) {
                     Button(
-                        onClick = { com.example.aniflow.utils.AppUpdater.downloadAndInstall(context, foundUpdate!!.updateUrl, foundUpdate!!.versionName) },
+                        onClick = {
+                            com.example.aniflow.utils.AppUpdater.downloadAndInstall(
+                                context,
+                                foundUpdate!!.updateUrl,
+                                foundUpdate!!.versionName
+                            )
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent)
                     ) {
-                        Text("Download", color = TextPrimary)
+                        Text("Download", color = TextPrimary, fontWeight = FontWeight.Bold)
                     }
                 } else if (updateCheckState == "checking") {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
                         color = PrimaryAccent,
-                        strokeWidth = 2.dp
+                        strokeWidth = 2.5.dp
                     )
                 } else {
                     Button(
@@ -290,8 +363,6 @@ fun PhoneSettingsScreen(
                                         } catch (e: Exception) {
                                             1
                                         }
-                                        android.util.Log.d("PhoneSettingsScreen", "info: $info, currentVersionCode: $currentVersionCode")
-                                        android.widget.Toast.makeText(context, "Checked: Server=${info?.versionCode}, Current=$currentVersionCode", android.widget.Toast.LENGTH_SHORT).show()
                                         if (info != null && info.versionCode > currentVersionCode && !info.silentUpdate) {
                                             foundUpdate = info
                                             updateCheckState = "update_available"
@@ -300,7 +371,6 @@ fun PhoneSettingsScreen(
                                         }
                                     } catch (e: Exception) {
                                         android.util.Log.e("PhoneSettingsScreen", "Update check failed", e)
-                                        android.widget.Toast.makeText(context, "Error: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
                                         updateCheckState = "up_to_date"
                                     }
                                 }
@@ -308,20 +378,57 @@ fun PhoneSettingsScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent)
                     ) {
-                        Text("Check", color = TextPrimary)
+                        Text("Check", color = TextPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
-            },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
-        )
-        Spacer(Modifier.height(8.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
 
         // App Version
-        ListItem(
-            headlineContent = { Text("App Version", color = TextPrimary) },
-            supportingContent = { Text("v2.1.0 (Leanback Rebuilt)", color = TextSecondary) },
-            trailingContent = { Text("Official Build", color = SuccessGreen) },
-            colors = ListItemDefaults.colors(containerColor = SurfaceCard)
+        SettingsCard(isRedesign = isRedesign) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("App Version", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("v$appVersionName", color = TextSecondary, fontSize = 12.sp)
+                }
+                Text(
+                    text = "Official Build",
+                    color = SuccessGreen,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(end = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsCard(
+    isRedesign: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    if (isRedesign) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .glassSurface(shape = RoundedCornerShape(16.dp), borderWidth = 1.dp),
+            content = content
+        )
+    } else {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+            shape = RoundedCornerShape(12.dp),
+            content = content
         )
     }
 }

@@ -15,6 +15,8 @@ class SettingsStore(private val context: Context) {
     private val providerKey = stringPreferencesKey("provider_preference")
     private val autoSkipIntroKey = booleanPreferencesKey("auto_skip_intro")
     private val themeModeKey = stringPreferencesKey("theme_mode")
+    private val defaultSpeedKey = floatPreferencesKey("default_playback_speed")
+    private val autoPlayNextKey = booleanPreferencesKey("auto_play_next_episode")
 
     val qualityPreference: Flow<String> = context.settingsDataStore.data.map { prefs ->
         prefs[qualityKey] ?: "auto"
@@ -34,6 +36,14 @@ class SettingsStore(private val context: Context) {
 
     val themeMode: Flow<String> = context.settingsDataStore.data.map { prefs ->
         prefs[themeModeKey] ?: "system"
+    }
+
+    val defaultPlaybackSpeed: Flow<Float> = context.settingsDataStore.data.map { prefs ->
+        prefs[defaultSpeedKey] ?: 1.0f
+    }
+
+    val autoPlayNextEpisode: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[autoPlayNextKey] ?: true
     }
 
     suspend fun setQuality(quality: String) {
@@ -97,6 +107,18 @@ class SettingsStore(private val context: Context) {
     suspend fun setThemeMode(mode: String) {
         context.settingsDataStore.edit { prefs ->
             prefs[themeModeKey] = mode
+        }
+    }
+
+    suspend fun setDefaultPlaybackSpeed(speed: Float) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[defaultSpeedKey] = speed
+        }
+    }
+
+    suspend fun setAutoPlayNextEpisode(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[autoPlayNextKey] = enabled
         }
     }
 }
