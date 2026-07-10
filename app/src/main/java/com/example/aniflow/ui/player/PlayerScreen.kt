@@ -118,12 +118,19 @@ fun PlayerScreen(
 
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
 
+    val bandwidthMeter = remember {
+        androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(context)
+            .setInitialBitrateEstimate(15_000_000L)
+            .build()
+    }
+
     val httpDataSourceFactory = remember {
         androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(20000)
             .setReadTimeoutMs(20000)
+            .setTransferListener(bandwidthMeter)
     }
 
     val mediaSourceFactory = remember {
@@ -147,14 +154,36 @@ fun PlayerScreen(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         
+        val isEmulator = android.os.Build.HARDWARE.contains("goldfish") ||
+                android.os.Build.HARDWARE.contains("ranchu") ||
+                android.os.Build.PRODUCT.contains("sdk_gphone") ||
+                android.os.Build.MODEL.contains("Emulator") ||
+                android.os.Build.MODEL.contains("Android SDK built for x86")
+
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+            if (isEmulator) {
+                setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                    val decoders = androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT
+                        .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    decoders.sortedBy { decoder ->
+                        val name = decoder.name.lowercase()
+                        if (name.contains("goldfish") || name.contains("ranchu")) 2
+                        else if (name.startsWith("c2.android.") || name.startsWith("omx.google.")) 0
+                        else 1
+                    }
+                }
+            }
+        }
+
         val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
             .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
             .setUsage(androidx.media3.common.C.USAGE_MEDIA)
             .build()
 
-        ExoPlayer.Builder(context)
+        ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
+            .setBandwidthMeter(bandwidthMeter)
             .setAudioAttributes(audioAttributes, true)
             .setSeekBackIncrementMs(10000)
             .setSeekForwardIncrementMs(10000)
