@@ -161,6 +161,7 @@ fun PlayerScreen(
                 android.os.Build.MODEL.contains("Android SDK built for x86")
 
         val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+            setEnableDecoderFallback(true)
             if (isEmulator) {
                 setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
                     val decoders = androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT
@@ -226,10 +227,6 @@ fun PlayerScreen(
                     viewModel.hasError.value = true
                 }
             }
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                applyVideoQualityOverride(exoPlayer, selectedVideoQuality)
-            }
-
         }
         exoPlayer.addListener(listener)
         onDispose {
@@ -311,9 +308,6 @@ fun PlayerScreen(
             }
             activeEpisodeIndex = currentEpisodeIndex
 
-            // Let ExoPlayer pick the best available track based on preference
-            applyVideoQualityOverride(exoPlayer, selectedVideoQuality)
-
             exoPlayer.setMediaItem(mediaItemBuilder.build())
             exoPlayer.setPlaybackSpeed(playbackSpeed)
             exoPlayer.prepare()
@@ -323,10 +317,6 @@ fun PlayerScreen(
             }
             exoPlayer.playWhenReady = true
         }
-    }
-
-    LaunchedEffect(selectedVideoQuality, exoPlayer) {
-        applyVideoQualityOverride(exoPlayer, selectedVideoQuality)
     }
 
     LaunchedEffect(selectedSubtitle, exoPlayer) {
@@ -969,51 +959,5 @@ private fun buildPlaybackHeaders(
         merged["Origin"] = "https://anilight.live"
     }
     return merged
-}
-
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, quality: String) {
-    val params = exoPlayer.trackSelectionParameters.buildUpon()
-        .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
-    
-    val height = when (quality) {
-        "1080p" -> 1080
-        "720p" -> 720
-        "480p" -> 480
-        "360p" -> 360
-        else -> 0
-    }
-    
-    if (height <= 0) {
-        params.clearVideoSizeConstraints()
-        exoPlayer.trackSelectionParameters = params.build()
-        return
-    }
-    
-    var foundOverride = false
-    val tracks = exoPlayer.currentTracks
-    val videoType = androidx.media3.common.C.TRACK_TYPE_VIDEO
-    
-    for (groupInfo in tracks.groups) {
-        if (groupInfo.type == videoType) {
-            val group = groupInfo.mediaTrackGroup
-            for (i in 0 until group.length) {
-                val format = group.getFormat(i)
-                if (kotlin.math.abs(format.height - height) <= 10) {
-                    params.setOverrideForType(
-                        androidx.media3.common.TrackSelectionOverride(group, i)
-                    )
-                    foundOverride = true
-                    break
-                }
-            }
-        }
-        if (foundOverride) break
-    }
-    
-    if (!foundOverride) {
-        params.setMaxVideoSize(height * 16 / 9, height)
-    }
-    exoPlayer.trackSelectionParameters = params.build()
 }
 

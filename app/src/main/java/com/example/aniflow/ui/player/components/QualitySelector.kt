@@ -269,7 +269,7 @@ fun QualitySelector(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (option == "auto") "Adaptive" else option.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                                text = if (option == "auto") "Auto" else option.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                                 color = TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
