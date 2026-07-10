@@ -28,6 +28,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.draw.blur
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import androidx.compose.ui.unit.dp
@@ -97,7 +99,17 @@ fun MainScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (updateInfo == null || !updateInfo!!.forceUpdate) {
-            if (deviceType == DeviceType.TV) {
+            val contentModifier = if (updateInfo != null) {
+                Modifier
+                    .focusProperties { canFocus = false }
+                    .let {
+                        if (isRedesign) it.blur(20.dp) else it
+                    }
+            } else {
+                Modifier
+            }
+            Box(modifier = contentModifier.fillMaxSize()) {
+                if (deviceType == DeviceType.TV) {
                 Column(
                     modifier = modifier
                         .fillMaxSize()
@@ -422,6 +434,7 @@ fun MainScreen(
                     }
                 }
             }
+            }
         }
 
         if (updateInfo != null) {
@@ -479,9 +492,9 @@ fun UpdateTakeoverScreen(
             .fillMaxSize()
             .background(
                 if (isRedesign) {
-                    Color.Black.copy(alpha = 0.6f)
+                    Color.Black.copy(alpha = 0.85f)
                 } else {
-                    PrimaryDark.copy(alpha = 0.85f)
+                    PrimaryDark.copy(alpha = 0.9f)
                 }
             )
             .let {
@@ -528,7 +541,7 @@ fun UpdateTakeoverScreen(
             Surface(
                 modifier = cardModifier,
                 shape = RoundedCornerShape(20.dp),
-                color = if (isRedesign) Color.Transparent else SurfaceCard,
+                color = if (isRedesign) Color(0xFF0F0E17).copy(alpha = 0.98f) else SurfaceCard,
                 tonalElevation = 16.dp
             ) {
                 Column(
