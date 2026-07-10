@@ -140,8 +140,8 @@ fun PlayerScreen(
             .setBufferDurationsMs(
                 50_000,
                 120_000,
-                2_500,
-                5_000
+                5_000,
+                8_000
             )
             .setBackBuffer(30_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -224,7 +224,6 @@ fun PlayerScreen(
             viewModel.errorMessage.value = ""
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
-            delay(200)
             viewModel.isBuffering.value = true
 
             val headers = buildPlaybackHeaders(source, streamingSources?.headers)
@@ -280,12 +279,18 @@ fun PlayerScreen(
             }
             activeEpisodeIndex = currentEpisodeIndex
 
-            // Let ExoPlayer pick the best available track — each source URL is already quality-specific
-            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                .buildUpon()
-                .clearVideoSizeConstraints()
+            // Let ExoPlayer pick the best available track based on preference
+            val params = exoPlayer.trackSelectionParameters.buildUpon()
                 .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
-                .build()
+            when (selectedVideoQuality) {
+                "auto" -> params.clearVideoSizeConstraints()
+                "1080p" -> params.setMaxVideoSize(1920, 1080)
+                "720p" -> params.setMaxVideoSize(1280, 720)
+                "480p" -> params.setMaxVideoSize(854, 480)
+                "360p" -> params.setMaxVideoSize(640, 360)
+                else -> params.clearVideoSizeConstraints()
+            }
+            exoPlayer.trackSelectionParameters = params.build()
 
             exoPlayer.setMediaItem(mediaItemBuilder.build())
             exoPlayer.setPlaybackSpeed(playbackSpeed)
@@ -296,6 +301,20 @@ fun PlayerScreen(
             }
             exoPlayer.playWhenReady = true
         }
+    }
+
+    LaunchedEffect(selectedVideoQuality, exoPlayer) {
+        val params = exoPlayer.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
+        when (selectedVideoQuality) {
+            "auto" -> params.clearVideoSizeConstraints()
+            "1080p" -> params.setMaxVideoSize(1920, 1080)
+            "720p" -> params.setMaxVideoSize(1280, 720)
+            "480p" -> params.setMaxVideoSize(854, 480)
+            "360p" -> params.setMaxVideoSize(640, 360)
+            else -> params.clearVideoSizeConstraints()
+        }
+        exoPlayer.trackSelectionParameters = params.build()
     }
 
     LaunchedEffect(selectedSubtitle, exoPlayer) {

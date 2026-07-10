@@ -17,7 +17,7 @@ object AdBlocker {
         "vungle.com", "ironsrc.com", "mopub.com", "inmobi.com", "chartboost.com", "tapjoy.com",
         "admob.com", "smaato.net", "flurry.com", "adjust.com", "branch.io", "kochava.com",
         "appsflyer.com", "singular.net", "tenjin.com", "mixpanel.com", "amplitude.com",
-        "segment.io", "track.", ".ads.", "pagead", "cdn-cgi/trace", "adsboosters.xyz",
+        "segment.io", "pagead", "cdn-cgi/trace", "adsboosters.xyz",
         "sad.adsboosters.xyz", "googletagmanager.com", "google-analytics.com"
     )
 

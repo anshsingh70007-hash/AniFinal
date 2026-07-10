@@ -330,14 +330,11 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                         if (preferredQuality != "auto") {
                             if (src.quality.contains(preferredQuality, ignoreCase = true)) 1 else 0
                         } else {
-                            when {
-                                src.quality.contains("Auto", ignoreCase = true) -> 5
-                                src.quality.contains("1080p", ignoreCase = true) -> 4
-                                src.quality.contains("720p", ignoreCase = true) -> 3
-                                src.quality.contains("480p", ignoreCase = true) -> 2
-                                src.quality.contains("360p", ignoreCase = true) -> 1
-                                else -> 0
-                            }
+                            if (src.quality.contains("1080p", ignoreCase = true)) 4
+                            else if (src.quality.contains("720p", ignoreCase = true)) 3
+                            else if (src.quality.contains("480p", ignoreCase = true)) 2
+                            else if (src.quality.contains("360p", ignoreCase = true)) 1
+                            else 0
                         }
                     })
                     response = sources.copy(sources = sortedSources)

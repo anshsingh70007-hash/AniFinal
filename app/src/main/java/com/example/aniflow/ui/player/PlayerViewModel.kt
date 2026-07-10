@@ -23,6 +23,13 @@ class PlayerViewModel(
                 android.util.Log.e("PlayerViewModel", "Failed to get default playback speed", e)
             }
         }
+        viewModelScope.launch {
+            try {
+                selectedVideoQuality.value = settingsStore.qualityPreference.first()
+            } catch (e: Exception) {
+                // ignore — default "auto" is fine
+            }
+        }
     }
     
     val anime = MutableStateFlow<Anime?>(null)
@@ -207,28 +214,23 @@ class PlayerViewModel(
         selectedVideoQuality.value = parseResolutionLabel(source.quality)
     }
 
-    /** Switch to a source URL matching the requested resolution and current sub/dub preference. */
+    /** Update quality preference — ExoPlayer handles track switching via LaunchedEffect in PlayerScreen. */
     fun selectQualityByResolution(resolution: String) {
-        val sources = streamingSources.value?.sources ?: return
-        val preferSub = selectedSource.value?.let { isSubSource(it) } ?: true
-        val match = if (resolution.equals("auto", ignoreCase = true)) {
-            sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) && isSubSource(it) == preferSub }
-                ?: sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) }
-        } else {
-            findSourceForResolution(sources, resolution, preferSub)
-                ?: findSourceForResolution(sources, resolution, preferSub = !preferSub)
-                ?: sources.firstOrNull { parseResolutionLabel(it.quality).equals(resolution, ignoreCase = true) }
-        }
-        if (match != null) {
-            selectSource(match)
+        selectedVideoQuality.value = resolution
+        viewModelScope.launch {
+            try {
+                settingsStore.setQuality(resolution)
+            } catch (e: Exception) {
+                // ignore
+            }
         }
     }
 
     private fun pickInitialSource(sources: List<StreamingSource>): StreamingSource? {
         if (sources.isEmpty()) return null
-        // Prefer adaptive Auto streams — they are the most reliable across providers
-        val autoSub = sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) && isSubSource(it) }
-        val autoAny = sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) }
+        // Prefer adaptive Auto/Adaptive streams — they are the most reliable across providers
+        val autoSub = sources.firstOrNull { (it.quality.contains("Auto", ignoreCase = true) || it.quality.contains("Adaptive", ignoreCase = true)) && isSubSource(it) }
+        val autoAny = sources.firstOrNull { it.quality.contains("Auto", ignoreCase = true) || it.quality.contains("Adaptive", ignoreCase = true) }
         return autoSub ?: autoAny ?: sources.first()
     }
 
@@ -255,7 +257,7 @@ class PlayerViewModel(
             quality.contains("720", ignoreCase = true) -> "720p"
             quality.contains("480", ignoreCase = true) -> "480p"
             quality.contains("360", ignoreCase = true) -> "360p"
-            quality.contains("Auto", ignoreCase = true) -> "auto"
+            quality.contains("Auto", ignoreCase = true) || quality.contains("Adaptive", ignoreCase = true) -> "auto"
             else -> "auto"
         }
     }
