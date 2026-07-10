@@ -158,8 +158,12 @@ class MainScreenViewModel(
                     android.util.Log.d("MainScreenViewModel", "checkForUpdates final: info=$info, current=$currentVersionCode")
                     
                     val dismissedCode = settingsStore.dismissedVersionCode.first()
+                    android.util.Log.d("MainScreenViewModel", "checkForUpdates: dismissedCode=$dismissedCode")
                     if (info.versionCode > currentVersionCode && info.versionCode != dismissedCode) {
+                        android.util.Log.d("MainScreenViewModel", "checkForUpdates: Setting updateInfo state!")
                         _updateInfo.value = info
+                    } else {
+                        android.util.Log.d("MainScreenViewModel", "checkForUpdates: Conditions not met. info.versionCode=${info.versionCode}, currentVersionCode=$currentVersionCode, dismissedCode=$dismissedCode")
                     }
                 } else {
                     android.util.Log.e("MainScreenViewModel", "Update check failed after all retries")
