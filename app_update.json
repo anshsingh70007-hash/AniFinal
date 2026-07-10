@@ -1,8 +1,8 @@
 {
-  "versionCode": 40,
-  "versionName": "1.7.23",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.23-redesign.apk",
-  "updateNotes": "D-pad navigation and glassmorphism update UI redesign.",
-  "forceUpdate": true,
+  "versionCode": 41,
+  "versionName": "1.8.0",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.0-redesign.apk",
+  "updateNotes": "Final Release 1.8.0. Includes double-constraint quality selection locking, D-pad navigation fixes, and premium glassmorphic UI updates.",
+  "forceUpdate": false,
   "silentUpdate": false
 }
