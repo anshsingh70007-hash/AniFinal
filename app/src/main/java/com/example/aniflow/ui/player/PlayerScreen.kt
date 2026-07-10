@@ -140,8 +140,8 @@ fun PlayerScreen(
             .setBufferDurationsMs(
                 50_000,
                 120_000,
-                5_000,
-                8_000
+                10_000,
+                15_000
             )
             .setBackBuffer(30_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
