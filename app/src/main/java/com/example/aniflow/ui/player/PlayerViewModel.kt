@@ -123,18 +123,8 @@ class PlayerViewModel(
             try {
                 val sources = repository.getStreamingSources(ep.id)
                 streamingSources.value = sources
-                val preferredQuality = selectedVideoQuality.value
-                val preferredLang = try { settingsStore.languagePreference.first() } catch (e: Exception) { "sub" }
-                val preferSub = preferredLang.lowercase() != "dub"
-                
-                val matchedSource = findSourceForResolution(sources.sources, preferredQuality, preferSub)
-                    ?: sources.sources.firstOrNull { src -> parseResolutionLabel(src.quality).equals(preferredQuality, ignoreCase = true) }
-                    ?: pickInitialSource(sources.sources)
-                
-                selectedSource.value = matchedSource
-                if (matchedSource != null) {
-                    selectedVideoQuality.value = parseResolutionLabel(matchedSource.quality)
-                }
+                val primarySource = pickInitialSource(sources.sources)
+                selectedSource.value = primarySource
                 selectedSubtitle.value = sources.subtitles.firstOrNull { it.lang.lowercase() == "en" } ?: sources.subtitles.firstOrNull()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -221,7 +211,7 @@ class PlayerViewModel(
         selectedVideoQuality.value = parseResolutionLabel(source.quality)
     }
 
-    /** Update quality preference — switches source URL corresponding to quality preference. */
+    /** Update quality preference — ExoPlayer handles track switching via LaunchedEffect in PlayerScreen. */
     fun selectQualityByResolution(resolution: String) {
         selectedVideoQuality.value = resolution
         viewModelScope.launch {
@@ -230,20 +220,6 @@ class PlayerViewModel(
             } catch (e: Exception) {
                 // ignore
             }
-        }
-        
-        val sources = streamingSources.value?.sources ?: return
-        val currentSource = selectedSource.value
-        val preferSub = currentSource == null || isSubSource(currentSource)
-        
-        val matchedSource = findSourceForResolution(sources, resolution, preferSub)
-            ?: sources.firstOrNull { src -> parseResolutionLabel(src.quality).equals(resolution, ignoreCase = true) }
-            
-        if (matchedSource != null && matchedSource.url != currentSource?.url) {
-            failedSources.clear()
-            hasError.value = false
-            errorMessage.value = ""
-            selectedSource.value = matchedSource
         }
     }
 

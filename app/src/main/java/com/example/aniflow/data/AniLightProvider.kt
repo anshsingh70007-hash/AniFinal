@@ -369,7 +369,7 @@ class AniLightProvider(private val client: HttpClient) {
                         resolvedSources.add(
                             StreamingSource(
                                 url = finalUrl,
-                                quality = "$cleanResolution (${type.uppercase()})",
+                                quality = "$cleanResolution - ${provId.uppercase()} (${type.uppercase()})",
                                 isM3U8 = isHlsStream,
                                 headers = mapOf(
                                     "Referer" to referrer,
