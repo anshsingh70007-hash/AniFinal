@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import androidx.compose.ui.unit.dp
@@ -448,9 +450,20 @@ fun UpdateTakeoverScreen(
     val context = LocalContext.current
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
     val deviceType = com.example.aniflow.LocalDeviceType.current
+    val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         visible = true
+    }
+
+    LaunchedEffect(visible) {
+        if (visible && deviceType == com.example.aniflow.DeviceType.TV) {
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
     }
 
     val executeWithAnimation: (() -> Unit) -> Unit = { callback ->
@@ -464,9 +477,21 @@ fun UpdateTakeoverScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(PrimaryDark.copy(alpha = 0.85f))
-            .clickable(enabled = !info.forceUpdate && downloadProgress < 0f) {
-                executeWithAnimation { onDismiss() }
+            .background(
+                if (isRedesign) {
+                    Color.Black.copy(alpha = 0.6f)
+                } else {
+                    PrimaryDark.copy(alpha = 0.85f)
+                }
+            )
+            .let {
+                if (deviceType != com.example.aniflow.DeviceType.TV) {
+                    it.clickable(enabled = !info.forceUpdate && downloadProgress < 0f) {
+                        executeWithAnimation { onDismiss() }
+                    }
+                } else {
+                    it
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -480,12 +505,24 @@ fun UpdateTakeoverScreen(
                     .widthIn(max = 440.dp)
                     .padding(24.dp)
                     .glassSurface(shape = RoundedCornerShape(20.dp))
-                    .clickable(enabled = false) {}
+                    .let {
+                        if (deviceType != com.example.aniflow.DeviceType.TV) {
+                            it.clickable(enabled = false) {}
+                        } else {
+                            it
+                        }
+                    }
             } else {
                 Modifier
                     .widthIn(max = 440.dp)
                     .padding(24.dp)
-                    .clickable(enabled = false) {}
+                    .let {
+                        if (deviceType != com.example.aniflow.DeviceType.TV) {
+                            it.clickable(enabled = false) {}
+                        } else {
+                            it
+                        }
+                    }
             }
 
             Surface(
@@ -612,6 +649,7 @@ fun UpdateTakeoverScreen(
                                 isPrimary = true,
                                 isRedesign = isRedesign,
                                 deviceType = deviceType,
+                                modifier = Modifier.focusRequester(focusRequester),
                                 onClick = {
                                     downloadProgress = 0.0f
                                     onDownload { progress ->
@@ -623,13 +661,14 @@ fun UpdateTakeoverScreen(
                             if (!info.forceUpdate) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     UpdateButton(
                                         text = "Remind Later",
                                         isPrimary = false,
                                         isRedesign = isRedesign,
                                         deviceType = deviceType,
+                                        modifier = Modifier.weight(1f),
                                         onClick = {
                                             executeWithAnimation { onDismiss() }
                                         }
@@ -639,6 +678,7 @@ fun UpdateTakeoverScreen(
                                         isPrimary = false,
                                         isRedesign = isRedesign,
                                         deviceType = deviceType,
+                                        modifier = Modifier.weight(1f),
                                         onClick = {
                                             executeWithAnimation { onSkip() }
                                         }
@@ -659,12 +699,13 @@ private fun UpdateButton(
     isPrimary: Boolean,
     isRedesign: Boolean,
     deviceType: com.example.aniflow.DeviceType,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
     val buttonModifier = if (isRedesign) {
-        Modifier
+        modifier
             .let { if (isPrimary) it.fillMaxWidth() else it }
             .onFocusChanged { isFocused = it.isFocused }
             .let {
@@ -677,15 +718,22 @@ private fun UpdateButton(
             .glassSurface(
                 shape = RoundedCornerShape(12.dp),
                 borderWidth = if (isPrimary) 2.dp else 1.dp,
-                isFocused = isFocused || isPrimary
+                isFocused = isFocused
             )
+            .let {
+                if (isPrimary && !isFocused) {
+                    it.background(PrimaryAccent.copy(alpha = 0.15f), shape = RoundedCornerShape(12.dp))
+                } else {
+                    it
+                }
+            }
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null
             ) { onClick() }
             .padding(horizontal = 20.dp, vertical = if (isPrimary) 14.dp else 10.dp)
     } else {
-        Modifier
+        modifier
             .let { if (isPrimary) it.fillMaxWidth() else it }
             .onFocusChanged { isFocused = it.isFocused }
             .clip(RoundedCornerShape(12.dp))
@@ -716,7 +764,13 @@ private fun UpdateButton(
     ) {
         Text(
             text = text,
-            color = if (isPrimary || isFocused) TextPrimary else TextSecondary,
+            color = if (isFocused) {
+                PrimaryAccentLight
+            } else if (isPrimary) {
+                TextPrimary
+            } else {
+                TextSecondary
+            },
             fontSize = if (isPrimary) 16.sp else 14.sp,
             fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.Medium
         )
