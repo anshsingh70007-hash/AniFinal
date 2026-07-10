@@ -173,7 +173,6 @@ class PlayerViewModel(
         if (nextSource != null) {
             android.util.Log.d("PlayerViewModel", "Falling back to ${nextSource.quality}")
             selectedSource.value = nextSource
-            selectedVideoQuality.value = parseResolutionLabel(nextSource.quality)
             return
         }
 
@@ -201,14 +200,12 @@ class PlayerViewModel(
 
     fun selectSource(source: StreamingSource) {
         if (selectedSource.value?.url == source.url) {
-            selectedVideoQuality.value = parseResolutionLabel(source.quality)
             return
         }
         failedSources.clear()
         hasError.value = false
         errorMessage.value = ""
         selectedSource.value = source
-        selectedVideoQuality.value = parseResolutionLabel(source.quality)
     }
 
     /** Update quality preference — ExoPlayer handles track switching via LaunchedEffect in PlayerScreen. */
