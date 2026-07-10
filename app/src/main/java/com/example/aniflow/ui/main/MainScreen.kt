@@ -31,9 +31,20 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.draw.blur
 import com.example.aniflow.ui.redesign.theme.glassSurface
+import com.example.aniflow.ui.redesign.theme.darkGlassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
+import com.example.aniflow.ui.redesign.theme.GlassTokens
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.CircleShape
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
@@ -233,14 +244,64 @@ fun MainScreen(
                                     .padding(bottom = 16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Box(
+                                var lastTab by remember { mutableStateOf(currentTab) }
+                                val isMovingRight = currentTab > lastTab
+                                val isMovingLeft = currentTab < lastTab
+
+                                val leftStiffness = if (isMovingLeft) Spring.StiffnessMedium else Spring.StiffnessMediumLow
+                                val rightStiffness = if (isMovingRight) Spring.StiffnessMedium else Spring.StiffnessMediumLow
+
+                                LaunchedEffect(currentTab) {
+                                    delay(280) // Wait slightly less than spring settling time to update state
+                                    lastTab = currentTab
+                                }
+
+                                BoxWithConstraints(
                                     modifier = Modifier
-                                        .wrapContentSize()
-                                        .glassSurface(shape = RoundedCornerShape(28.dp), borderWidth = 1.dp)
+                                        .width(320.dp)
+                                        .height(64.dp)
+                                        .darkGlassSurface(shape = CircleShape, borderWidth = 1.dp)
                                 ) {
+                                    val tabWidth = maxWidth / 4
+
+                                    val leftEdge by animateDpAsState(
+                                        targetValue = tabWidth * currentTab + 6.dp,
+                                        animationSpec = spring(
+                                            dampingRatio = 0.75f,
+                                            stiffness = leftStiffness
+                                        ),
+                                        label = "leftEdge"
+                                    )
+                                    val rightEdge by animateDpAsState(
+                                        targetValue = tabWidth * (currentTab + 1) - 6.dp,
+                                        animationSpec = spring(
+                                            dampingRatio = 0.75f,
+                                            stiffness = rightStiffness
+                                        ),
+                                        label = "rightEdge"
+                                    )
+
+                                    // Liquid Sliding Indicator Capsule
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(x = leftEdge)
+                                            .width(rightEdge - leftEdge)
+                                            .fillMaxHeight()
+                                            .padding(vertical = 8.dp)
+                                            .background(
+                                                color = Color.White.copy(alpha = 0.12f),
+                                                shape = CircleShape
+                                            )
+                                            .border(
+                                                width = 1.dp,
+                                                color = Color.White.copy(alpha = 0.08f),
+                                                shape = CircleShape
+                                            )
+                                    )
+
+                                    // Tab Icons Row
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        modifier = Modifier.fillMaxSize(),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         val items = listOf(
@@ -251,32 +312,47 @@ fun MainScreen(
                                         )
                                         items.forEach { (index, pair) ->
                                             val isSelected = currentTab == index
+
+                                            // Animate size/scale of icon on click
+                                            val iconScale by animateFloatAsState(
+                                                targetValue = if (isSelected) 1.25f else 1.0f,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessMedium
+                                                ),
+                                                label = "iconScale"
+                                            )
+
+                                            // Animate color/tint of icon
+                                            val iconColor by animateColorAsState(
+                                                targetValue = if (isSelected) GlassTokens.GlowCyan else GlassTokens.TextMuted.copy(alpha = 0.7f),
+                                                animationSpec = tween(durationMillis = 250),
+                                                label = "iconColor"
+                                            )
+
                                             Box(
                                                 modifier = Modifier
-                                                    .clip(RoundedCornerShape(20.dp))
-                                                    .clickable { viewModel.setTab(index) }
-                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                    .weight(1f)
+                                                    .fillMaxHeight()
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) {
+                                                        viewModel.setTab(index)
+                                                    },
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = pair.first,
-                                                        contentDescription = pair.second,
-                                                        tint = if (isSelected) PrimaryAccentLight else TextSecondary,
-                                                        modifier = Modifier.size(22.dp)
-                                                    )
-                                                    if (isSelected) {
-                                                        Text(
-                                                            text = pair.second,
-                                                            color = PrimaryAccentLight,
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold
+                                                Icon(
+                                                    imageVector = pair.first,
+                                                    contentDescription = pair.second,
+                                                    tint = iconColor,
+                                                    modifier = Modifier
+                                                        .graphicsLayer(
+                                                            scaleX = iconScale,
+                                                            scaleY = iconScale
                                                         )
-                                                    }
-                                                }
+                                                        .size(24.dp)
+                                                )
                                             }
                                         }
                                     }

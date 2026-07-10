@@ -295,6 +295,7 @@ class MainScreenViewModel(
                 )
                 batch2.joinAll()
                 _isLoading.value = false // Let user interact early!
+                com.example.aniflow.ui.redesign.components.AppLoader.setLoaded(true)
 
                 // If trending still looks like fallback data, retry once after a delay
                 if (_trending.value.size <= 3 && _trending.value.firstOrNull()?.id == 1535) {

@@ -131,3 +131,20 @@ fun Modifier.filmGrainOverlay(
         }
     }
 }
+
+fun Modifier.darkGlassSurface(
+    shape: Shape = androidx.compose.foundation.shape.CircleShape,
+    borderWidth: Dp = 1.dp
+): Modifier = this.composed {
+    val borderBrush = remember {
+        Brush.linearGradient(
+            colors = listOf(GlassTokens.BorderHighlightStart, GlassTokens.BorderHighlightEnd)
+        )
+    }
+    
+    this
+        .clip(shape)
+        .background(Color(0xD90F0E17)) // Premium 85% opaque dark slate background
+        .border(borderWidth, borderBrush, shape)
+}
+
