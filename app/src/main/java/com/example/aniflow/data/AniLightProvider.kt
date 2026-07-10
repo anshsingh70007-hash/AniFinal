@@ -18,7 +18,8 @@ import kotlinx.coroutines.*
 data class ProviderSearchResult(
     val title: String,
     val slug: String,
-    val posterUrl: String
+    val posterUrl: String,
+    val anilistId: Int? = null
 )
 
 @Serializable
@@ -39,7 +40,8 @@ data class AniLightAnimeItem(
     val id: Int,
     val slug: String,
     val title: AniLightTitle,
-    val coverImage: AniLightCoverImage? = null
+    val coverImage: AniLightCoverImage? = null,
+    val anilistId: Int? = null
 )
 
 @Serializable
@@ -112,7 +114,8 @@ class AniLightProvider(private val client: HttpClient) {
                     ProviderSearchResult(
                         title = title,
                         slug = item.slug,
-                        posterUrl = poster
+                        posterUrl = poster,
+                        anilistId = item.anilistId
                     )
                 }
             } else {

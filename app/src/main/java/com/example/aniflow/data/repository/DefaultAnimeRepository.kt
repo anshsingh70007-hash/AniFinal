@@ -290,14 +290,28 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             }
 
             var searchResults = emptyList<ProviderSearchResult>()
+            var bestMatch: ProviderSearchResult? = null
+
             for (searchTitle in searchTitles) {
-                searchResults = aniLightProvider.search(searchTitle)
-                if (searchResults.isNotEmpty()) {
-                    break
+                val results = aniLightProvider.search(searchTitle)
+                if (results.isNotEmpty()) {
+                    val idMatch = results.find { it.anilistId == animeId }
+                    if (idMatch != null) {
+                        bestMatch = idMatch
+                        break
+                    }
+                    if (searchResults.isEmpty()) {
+                        searchResults = results
+                    }
                 }
             }
 
-            val bestMatch = searchResults.firstOrNull()
+            if (bestMatch == null && searchResults.isNotEmpty()) {
+                bestMatch = searchResults.find { res ->
+                    titlesToTry.any { toTry -> res.title.equals(toTry, ignoreCase = true) }
+                } ?: searchResults.firstOrNull()
+            }
+
             if (bestMatch != null) {
                 val list = aniLightProvider.getEpisodeList(bestMatch.slug)
                 episodesList.addAll(list)

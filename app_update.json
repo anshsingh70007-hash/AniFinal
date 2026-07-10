@@ -1,8 +1,8 @@
 {
-  "versionCode": 42,
-  "versionName": "1.8.1",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.1-redesign.apk",
-  "updateNotes": "Introduces a premium startup intro screen featuring double-buffered gapless video playback (60fps), automated background pre-loading with manual loop completion, TextureView-based hardware alpha transitions, a smooth 800ms zoom-fade app reveal with bouncy spring pop, and persistent background audio. Also includes the custom floating glassmorphic bottom bar with elastic liquid-sliding and spring-scaling icon feedback.",
+  "versionCode": 43,
+  "versionName": "1.8.2",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.2-redesign.apk",
+  "updateNotes": "Fixed episode listing matching for classic anime series (Neon Genesis Evangelion, Ghost in the Shell, etc.) and redesigned the mobile spotlight hero banner with a cinematic gradient, action buttons, and top-right indicator pill.",
   "forceUpdate": false,
   "silentUpdate": false
 }

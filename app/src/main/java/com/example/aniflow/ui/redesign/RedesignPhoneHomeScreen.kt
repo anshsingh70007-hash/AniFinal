@@ -32,6 +32,10 @@ import com.example.aniflow.ui.redesign.components.GlassCard
 import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.redesign.theme.filmGrainOverlay
 import kotlinx.coroutines.delay
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Star
 
 @Composable
 fun RedesignPhoneHomeScreen(
@@ -175,7 +179,7 @@ fun RedesignSpotlightPager(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp)
+            .height(300.dp)
     ) {
         HorizontalPager(
             state = pagerState,
@@ -199,58 +203,208 @@ fun RedesignSpotlightPager(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, PrimaryDark.copy(alpha = 0.5f), PrimaryDark),
+                                colors = listOf(
+                                    Color.Transparent,
+                                    PrimaryDark.copy(alpha = 0.2f),
+                                    PrimaryDark.copy(alpha = 0.7f),
+                                    PrimaryDark
+                                ),
                                 startY = 0f
                             )
                         )
                 )
                 
-                // Floating Frosted Glass Card for description details
-                GlassCard(
-                    onClick = { onAnimeClick(anime) },
+                // Bottom details overlay layout
+                Column(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .align(Alignment.BottomStart)
-                        .padding(16.dp)
-                        .fillMaxWidth(0.85f),
-                    shape = RoundedCornerShape(12.dp)
+                        .padding(horizontal = 16.dp, vertical = 20.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("SPOTLIGHT", color = GlassTokens.GlowCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(2.dp))
-                        Text(anime.title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val cleanDescription = remember(anime.description) {
-                            anime.description?.replace(Regex("<[^>]*>"), "") ?: ""
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .background(GlassTokens.GlowCyan.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                    .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "SPOTLIGHT",
+                                    color = GlassTokens.GlowCyan,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            
+                            anime.studioName?.let { studio ->
+                                Text(
+                                    text = studio,
+                                    color = GlassTokens.TextMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(4.dp))
+
+                        anime.averageScore?.let { score ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Star,
+                                    contentDescription = "Rating",
+                                    tint = WarningAmber,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = String.format("%.1f", score / 10.0),
+                                    color = TextPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        text = anime.title,
+                        color = TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    if (anime.genres.isNotEmpty()) {
                         Text(
-                            cleanDescription,
+                            text = anime.genres.take(3).joinToString(" • "),
                             color = GlassTokens.TextMuted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(6.dp))
+                    }
+
+                    val cleanDescription = remember(anime.description) {
+                        anime.description?.replace(Regex("<[^>]*>"), "") ?: ""
+                    }
+                    if (cleanDescription.isNotEmpty()) {
+                        Text(
+                            text = cleanDescription,
+                            color = TextSecondary,
                             fontSize = 11.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             lineHeight = 15.sp
                         )
+                        Spacer(Modifier.height(12.dp))
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = { onAnimeClick(anime) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.Transparent
+                            ),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(GlassTokens.GlowCyan, PrimaryAccent)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.PlayArrow,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Watch Now",
+                                    color = Color.Black,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { onAnimeClick(anime) },
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color.White.copy(alpha = 0.06f)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Info",
+                                    color = TextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
         
-        // Custom Neon Indicators
         Row(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+                .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(100.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             repeat(spotlightList.size) { index ->
                 val active = pagerState.currentPage == index
                 Box(
                     modifier = Modifier
-                        .size(if (active) 16.dp else 6.dp, 6.dp)
+                        .size(if (active) 12.dp else 6.dp, 6.dp)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(if (active) GlassTokens.GlowCyan else GlassTokens.TextMuted.copy(alpha = 0.4f))
+                        .background(if (active) GlassTokens.GlowCyan else Color.White.copy(alpha = 0.4f))
                 )
             }
         }
