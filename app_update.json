@@ -1,8 +1,8 @@
 {
-  "versionCode": 39,
-  "versionName": "1.7.22",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.22-redesign.apk",
-  "updateNotes": "Stabilize video player: fix server switching loop, remove duplicate quality items, resolve audio distortions/lag, and align resolution constraints.",
-  "forceUpdate": false,
+  "versionCode": 40,
+  "versionName": "1.7.23",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.7.23-redesign.apk",
+  "updateNotes": "D-pad navigation and glassmorphism update UI redesign.",
+  "forceUpdate": true,
   "silentUpdate": false
 }
