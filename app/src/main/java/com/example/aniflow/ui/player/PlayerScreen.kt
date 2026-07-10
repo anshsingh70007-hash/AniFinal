@@ -228,7 +228,7 @@ fun PlayerScreen(
                 }
             }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                applyVideoQualityOverride(exoPlayer, selectedVideoQuality)
+                applyVideoQualityOverride(exoPlayer, viewModel.selectedVideoQuality.value)
             }
         }
         exoPlayer.addListener(listener)
@@ -972,6 +972,7 @@ private fun buildPlaybackHeaders(
 private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, quality: String) {
     val params = exoPlayer.trackSelectionParameters.buildUpon()
         .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
+        .clearVideoSizeConstraints()
     
     val targetHeight = when (quality) {
         "1080p" -> 1080
@@ -982,12 +983,16 @@ private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, quality: String) {
     }
     
     if (targetHeight <= 0) {
-        params.clearVideoSizeConstraints()
         exoPlayer.trackSelectionParameters = params.build()
         return
     }
     
-    var locked = false
+    var hasTargetTrack = false
+    var matchedWidth = targetHeight * 16 / 9
+    var matchedHeight = targetHeight
+    var targetGroup: androidx.media3.common.TrackGroup? = null
+    var targetTrackIndex = -1
+    
     val tracks = exoPlayer.currentTracks
     val videoType = androidx.media3.common.C.TRACK_TYPE_VIDEO
     
@@ -997,20 +1002,33 @@ private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, quality: String) {
             for (i in 0 until group.length) {
                 val format = group.getFormat(i)
                 if (kotlin.math.abs(format.height - targetHeight) <= 20) {
-                    params.setOverrideForType(
-                        androidx.media3.common.TrackSelectionOverride(group, i)
-                    )
-                    locked = true
+                    hasTargetTrack = true
+                    matchedWidth = format.width
+                    matchedHeight = format.height
+                    targetGroup = group
+                    targetTrackIndex = i
                     break
                 }
             }
         }
-        if (locked) break
+        if (hasTargetTrack) break
     }
     
-    if (!locked) {
+    if (hasTargetTrack && targetGroup != null && targetTrackIndex != -1) {
+        params.setMaxVideoSize(matchedWidth, matchedHeight)
+        params.setMinVideoSize(matchedWidth, matchedHeight)
+        params.addOverride(androidx.media3.common.TrackSelectionOverride(targetGroup, targetTrackIndex))
+    } else {
         params.setMaxVideoSize(targetHeight * 16 / 9, targetHeight)
+        params.setMinVideoSize(0, 0)
     }
-    exoPlayer.trackSelectionParameters = params.build()
+    
+    val newParams = params.build()
+    if (exoPlayer.trackSelectionParameters != newParams) {
+        exoPlayer.trackSelectionParameters = newParams
+        if (exoPlayer.playbackState == Player.STATE_READY) {
+            exoPlayer.seekTo(exoPlayer.currentPosition)
+        }
+    }
 }
 
