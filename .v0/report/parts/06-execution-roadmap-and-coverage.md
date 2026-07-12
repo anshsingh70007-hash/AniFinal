@@ -29,11 +29,12 @@ This file is the ordering contract for Gemini. Parts 01–05 define evidence and
 3. Fix AniLight quality normalization first: parse actual HLS/Media3 renditions, separate quality policy from server identity, and eliminate `Auto - MISA/NEAR/MISORA` rows.
 4. Resolve AniLight servers with bounded immutable concurrency and deterministic ordering.
 5. Introduce failover controller with classification/checkpoints that preserves requested quality and language.
-6. Add the Anikoto adapter behind `EpisodeProvider`, but keep it experimental until it proves native raw-source compatibility, identity correctness, and rate-limit reliability. Its current documented embed URLs are not a drop-in Media3 backup.
-7. Run the Anikoto qualification probe. Enable automatic backup only after the gate in Part 02 S-08 passes; otherwise keep AniLight primary and the adapter dormant.
-8. Fix scrubbing, lifecycle policy, noisy handling, subtitle MIME, and quality semantics.
+6. Add self-hosted Miruro and Anikoto adapters behind `EpisodeProvider`; keep both experimental. Miruro community implementations claim native M3U8 potential but depend on unofficial reverse-engineered behavior and Cloudflare-sensitive infrastructure. Anikoto currently exposes embed URLs rather than a proven Media3 contract.
+7. Run the Miruro S-09 and Anikoto S-08 qualification probes independently. If both qualify, prefer the provider with better measured identity accuracy, first-frame success, rendition truthfulness, and operational control; current evidence makes self-hosted Miruro the stronger backup candidate, not an automatic winner.
+8. Add remote provider priority, kill switches, and circuit breakers before any cross-provider automatic failover.
+9. Fix scrubbing, lifecycle policy, noisy handling, subtitle MIME, and quality semantics.
 
-**Exit:** no low-confidence series auto-binds; quality UI contains only truthful Auto/1080p/720p/480p/360p choices; server names never appear as quality; transient failures do not immediately switch; position/language/quality/headers survive failover; Anikoto cannot enter production failover without passing its documented gate.
+**Exit:** no low-confidence series auto-binds; quality UI contains only truthful Auto/1080p/720p/480p/360p choices; server names never appear as quality; transient failures do not immediately switch; position/language/quality/headers survive failover; neither Miruro nor Anikoto can enter production failover without passing its documented gate.
 
 ## Phase 3 — Architecture and state
 
@@ -70,7 +71,7 @@ This file is the ordering contract for Gemini. Parts 01–05 define evidence and
 | H-1–H-4 player | Part 03 |
 | H-5 repository Flow/cache | Part 04 A-03 |
 | H-7 logging | Part 04 SEC-03 |
-| H-8/H-13 streaming match/fan-out | Part 02 S-01–S-04 |
+| H-8/H-13 streaming match/fan-out | Part 02 S-01–S-09 |
 | H-9/H-10/H-11 build/flavors | Part 04 B-02/A-01 |
 | H-12 detail state | Parts 04 A-03, 05 U-01 |
 | H-14 TV controls | Parts 03 P-02, 05 U-02 |

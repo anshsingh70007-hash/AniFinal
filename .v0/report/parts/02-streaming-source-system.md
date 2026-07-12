@@ -252,7 +252,86 @@ If Anikoto cannot provide native raw sources, it does not meet the native-player
 
 ### Provider-removal decision
 
-Remove AniLight only if S-07 fails because AniLight consistently supplies neither parseable adaptive playlists nor reliable fixed-resolution metadata, **and** Anikoto (or another provider) passes the native-source qualification gate. If AniLight passes S-07, retain it as primary and keep the qualified Anikoto adapter as backup. If neither passes, surface a typed no-source state; never fabricate quality options or unrelated media.
+Remove AniLight only if S-07 fails because AniLight consistently supplies neither parseable adaptive playlists nor reliable fixed-resolution metadata, **and** Anikoto (or another provider) passes the native-source qualification gate. If AniLight passes S-07, retain it as primary and keep qualified backup adapters available. If no provider passes, surface a typed no-source state; never fabricate quality options or unrelated media.
+
+## S-09 — Miruro evaluation: stronger technical candidate, but not a public stable API
+
+- **Severity:** High availability architecture
+- **Evidence verified on 2026-07-12:** `https://www.miruro.to/` is a consumer streaming website protected by a Cloudflare human-verification challenge. The accessible site exposes a playback product, but no official public developer API, versioned contract, service-level agreement, or supported Android integration was found. Third-party GitHub projects claiming “Miruro API” extract/decrypt Miruro/provider M3U8 links; these are reverse-engineered community services, not evidence of an official stable Miruro contract.
+- **Assessment:** Miruro is technically more promising than Anikoto for a native Media3 backup because community implementations claim to return HLS/M3U8 sources and AniList-based episode mappings. It is operationally riskier than a documented API because Cloudflare, encryption, provider routing, request signatures, or upstream page changes can break it without notice.
+- **Decision:** Add Miruro as a second experimental candidate behind `EpisodeProvider`. Do not call `miruro.to` directly from the Android app, do not ship a copied decryption/extraction key in the APK, and do not treat an arbitrary public “Miruro API” deployment as production infrastructure.
+
+### Objective
+
+Determine whether a self-controlled Miruro adapter can provide correctly matched native HLS sources and real rendition metadata reliably enough to become the preferred backup after AniLight. The desired order is:
+
+1. AniLight primary after S-07 quality normalization;
+2. self-hosted, qualified Miruro adapter as first backup if it passes S-09;
+3. qualified Anikoto native source as another backup;
+4. typed unavailable state rather than an unverified embed or unrelated stream.
+
+If AniLight fails its acceptance gate, a qualified Miruro adapter may become primary. Provider priority must remain remotely configurable so an app update is not required to disable a broken integration.
+
+### Required architecture
+
+1. Implement `MiruroProvider : EpisodeProvider` in the backend/provider layer, not in Compose or `PlayerViewModel`.
+2. Use AniList ID as the primary identity only when the selected Miruro implementation documents that mapping. Still verify canonical title, season/year, episode number, language, and episode count before playback.
+3. Self-host and pin the reviewed adapter source/commit. Expose a small internal contract to Android; do not depend directly on a volunteer’s public Vercel/Render deployment.
+4. Return `NativeSources` only after validating the URL is an HLS/DASH/progressive media endpoint and preserving required request headers. Reject HTML, Cloudflare challenge pages, and expired redirects as typed errors.
+5. Parse the returned HLS master through the same rendition-normalization pipeline in S-07. Miruro must not create provider-specific quality labels. A Miruro master with four real variants yields Auto/1080p/720p/480p/360p; a single rendition yields only that truthful choice.
+6. Cache metadata and episode mappings, but treat signed media URLs as short-lived. Re-resolve on 401/403/410 or expiry; never persist them as user preference.
+7. Isolate extractor/encryption logic behind a backend module with contract fixtures and a kill switch. Do not place it in the APK, where it is easily reverse engineered and impossible to hotfix independently.
+8. Add bounded request concurrency, timeout budgets, circuit breakers, and per-provider health state. A Cloudflare challenge must open the circuit; it must not trigger a retry storm from every device.
+9. Preserve `QualityPolicy`, subtitle/language preference, episode identity, and playback checkpoint when moving between AniLight and Miruro.
+10. Perform terms, licensing, privacy, and distribution review before production use. Technical extractability does not establish permission or long-term availability.
+
+### Miruro qualification gate
+
+Run a self-hosted seven-day probe over at least 100 series and 500 representative episodes, including old titles, current simulcasts, movies, specials, sub, and dub. Require:
+
+- at least 99% correct AniList/season/episode identity for any automatically selected source;
+- at least 95% episode-resolution success and at least 98% first-frame success among resolved sources;
+- truthful rendition metadata confirmed against HLS manifests and active Media3 tracks;
+- no unresolved Cloudflare challenge in the backend path under normal operation;
+- measured 401/403/410/429 rates within an agreed error budget;
+- median source resolution below 2 seconds and p95 below 5 seconds from the deployment region;
+- no dependency on a third-party public proxy with unknown logging or uptime;
+- provider behavior tested from the actual production hosting region;
+- a working remote kill switch and circuit breaker;
+- legal/security approval for the chosen integration method.
+
+### Potential mistakes
+
+- Do not label an unofficial GitHub extractor as the “official Miruro API.”
+- Do not automate Cloudflare browser challenges in the Android client.
+- Do not hardcode the consumer website’s private endpoints and assume they are stable.
+- Do not use WebView interception to steal media requests as the native-player architecture.
+- Do not merge Miruro server/provider names into the quality selector.
+- Do not fail over merely because one segment timed out; classify and retry according to S-03/S-04.
+- Do not use a source unless identity confidence and language match are proven.
+
+### Verification checklist
+
+- Unit fixtures cover every supported Miruro response, master playlist, malformed response, challenge HTML, expired URL, and missing-quality case.
+- Integration tests verify source headers, redirects, subtitles, audio tracks, and HLS variants.
+- A forced AniLight outage moves to Miruro only after AniLight retry/circuit policy is exhausted and resumes within the checkpoint tolerance.
+- The requested fixed quality remains selected after cross-provider failover when Miruro carries that rendition.
+- If Miruro lacks the requested rendition, UI reports the fallback explicitly and does not silently select Auto.
+- Disabling Miruro remotely removes it from resolution without an app update.
+
+### Success criteria
+
+Miruro may become the first backup only after it passes the full gate on self-controlled infrastructure. Until then it remains experimental. The existence of a working consumer website or community extractor alone is insufficient evidence of production stability.
+
+## Final provider decision matrix
+
+| Provider | Current evidence | Native Media3 potential | Production role now | Promotion requirement |
+|---|---|---:|---|---|
+| AniLight | Existing app integration already resolves playable sources; quality model is wrong | High | Primary | Pass S-07 quality/stability tests |
+| Miruro | Consumer site; Cloudflare protected; unofficial extractors claim M3U8 | Potentially high, unverified | Experimental candidate | Self-hosted adapter passes S-09 gate |
+| Anikoto | Public metadata API returns embed URLs; sampled embed was stale | Low until raw sources are documented | Experimental metadata/embed candidate | Pass S-08 native-source gate |
+
+Do not remove AniLight based on API appearance alone. Choose providers using measured identity correctness, raw-source availability, first-frame success, rendition truthfulness, operational control, and failure rate.
 
 ## Streaming observability specification
 
