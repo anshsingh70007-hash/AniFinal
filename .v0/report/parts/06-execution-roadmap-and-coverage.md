@@ -25,12 +25,15 @@ This file is the ordering contract for Gemini. Parts 01–05 define evidence and
 ## Phase 2 — Streaming and player reliability
 
 1. Add typed provider match results and confidence tests.
-2. Preserve stable source/server/language/header identity.
-3. Resolve servers with bounded immutable concurrency and deterministic ordering.
-4. Introduce failover controller with classification/checkpoints.
-5. Fix scrubbing, lifecycle policy, noisy handling, subtitle MIME, and quality semantics.
+2. Preserve stable provider/source/server/language/header identity.
+3. Fix AniLight quality normalization first: parse actual HLS/Media3 renditions, separate quality policy from server identity, and eliminate `Auto - MISA/NEAR/MISORA` rows.
+4. Resolve AniLight servers with bounded immutable concurrency and deterministic ordering.
+5. Introduce failover controller with classification/checkpoints that preserves requested quality and language.
+6. Add the Anikoto adapter behind `EpisodeProvider`, but keep it experimental until it proves native raw-source compatibility, identity correctness, and rate-limit reliability. Its current documented embed URLs are not a drop-in Media3 backup.
+7. Run the Anikoto qualification probe. Enable automatic backup only after the gate in Part 02 S-08 passes; otherwise keep AniLight primary and the adapter dormant.
+8. Fix scrubbing, lifecycle policy, noisy handling, subtitle MIME, and quality semantics.
 
-**Exit:** no low-confidence series auto-binds; transient failures do not immediately switch; position/language/headers survive failover.
+**Exit:** no low-confidence series auto-binds; quality UI contains only truthful Auto/1080p/720p/480p/360p choices; server names never appear as quality; transient failures do not immediately switch; position/language/quality/headers survive failover; Anikoto cannot enter production failover without passing its documented gate.
 
 ## Phase 3 — Architecture and state
 

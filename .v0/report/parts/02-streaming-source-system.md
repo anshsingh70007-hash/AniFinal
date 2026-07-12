@@ -155,14 +155,115 @@ Do not store raw URLs as long-lived preference IDs because signed URLs expire. P
 ### Success
 Automated test asserts every successful playback source originates from the resolved provider response; provider failure produces no `MediaItem`.
 
+## S-07 — AniLight quality normalization: solve the current defect before replacing the provider
+
+- **Severity:** High player correctness
+- **Decision:** Keep AniLight as the primary provider **if and only if** the implementation below passes the quality and stability acceptance tests. Do not replace AniLight merely because its server IDs are currently shown as quality choices.
+- **Exact cause:** `AniLightProvider.processSourcesResponse` converts an unknown or missing provider quality to `"Auto"`, then constructs labels such as `"Auto - MISORA (SUB)"`, `"Auto - NEAR (SUB)"`, and `"Auto - MISA (SUB)"`. The code groups by the entire display string, so each server becomes a separate “quality.” `PlayerViewModel.pickInitialSource` then explicitly prefers any Auto source. These are server endpoints or adaptive master playlists, not distinct video qualities.
+- **Files to inspect:** `AniLightProvider.kt:273-290, 334-382`, `PlayerViewModel.kt:139-256`, `PlayerScreen.kt` quality-track helper, `QualitySelector.kt`, `StreamingSource.kt`.
+
+### Objective
+
+The user-facing quality menu must contain only `Auto`, `1080p`, `720p`, `480p`, and `360p` when those choices are genuinely available. Provider/server names must never appear in that menu. Server selection and quality selection are independent dimensions.
+
+### Required implementation
+
+1. Preserve every AniLight response as a server endpoint with `providerId`, language, headers, and stream type. Do not encode these fields into `quality`.
+2. For each endpoint, inspect the media:
+   - For an HLS master playlist, parse `#EXT-X-STREAM-INF` variants and their `RESOLUTION`/`BANDWIDTH` attributes. Expose one adaptive `Auto` choice plus only the actual height variants found in the master.
+   - For a single-variant/media playlist, probe Media3 tracks after preparation. It can support one known fixed height, but it cannot honestly manufacture 1080/720/480/360 choices.
+   - For progressive media, use declared provider metadata or Media3 format height after preparation.
+3. Normalize heights into supported UI buckets with an explicit rule. Recommended: exact heights first; optionally map 1072–1088 to 1080, 704–736 to 720, 464–496 to 480, and 344–376 to 360. Do not label an unknown stream as 1080p.
+4. Model the menu as `QualityPolicy.Auto` or `QualityPolicy.FixedHeight(height)`. Model the active server separately as `SourceEndpoint`.
+5. In Auto mode, select the adaptive master and clear video track overrides. In fixed mode, keep the same endpoint and apply a Media3 track selection constraint/override only if that height exists on that endpoint. Do not switch to another server merely because the user changes quality.
+6. If the current endpoint lacks the requested height, first search another healthy same-provider/same-language endpoint that advertises that height. If none exists, retain the current playback and show “1080p unavailable” rather than silently reverting to Auto.
+7. Persist `QualityPolicy`, not a provider label and not a signed URL. On episode change/failover, reapply the persisted policy after tracks become available. The visible selection must remain 1080p/720p/etc. if satisfied; if unavailable, display a distinct unavailable/fallback state rather than falsely highlighting Auto.
+8. Keep a separate advanced server picker for diagnostics/manual recovery. Server labels may be `Misa`, `Near`, `Misora`, etc. only there.
+
+### Potential mistakes
+
+- Do not create four menu rows unless four real renditions exist.
+- Do not parse quality solely from the URL string.
+- Do not group by display labels.
+- Do not use `setMinVideoSize` plus an exact override together.
+- Do not seek to the current position solely to force a track change; Media3 applies track-selection parameter updates.
+- Do not let failover overwrite the user’s quality policy with Auto.
+
+### Verification checklist
+
+- An AniLight adaptive master with four variants renders exactly Auto, 1080p, 720p, 480p, 360p.
+- Three AniLight servers returning unknown adaptive playlists render one quality menu, not three `Auto - SERVER` rows.
+- Selecting 720p changes the video track but not the endpoint when that endpoint carries 720p.
+- Episode next/previous and same-language failover preserve the selected quality policy.
+- When 1080p does not exist, the app never claims that it is playing 1080p.
+- Track changes are verified through Media3 `Tracks`, not only through UI state.
+
+### Success criteria
+
+Across a fixture set of at least 20 AniLight episodes and all supported servers, the menu contains no server names, no duplicate Auto rows, no fabricated heights, and the selected fixed height matches the active Media3 video track within the normalization tolerance.
+
+## S-08 — Anikoto evaluation and backup-provider architecture
+
+- **Severity:** High availability architecture
+- **Evidence verified on 2026-07-12:** `https://anikotoapi.site/series/{id}` returns episode `embed_url.sub`/`embed_url.dub` values, not documented raw HLS/DASH/progressive URLs or quality variants. The public documentation says the API is intended for server-side use and allows 60 requests per IP per 120 seconds. A sampled current embed URL from `/series/8851` returned HTTP 410 when inspected. Therefore Anikoto is **not currently a drop-in Media3 source provider and is not proven more stable than AniLight**.
+- **Decision:** Do not remove AniLight now. Implement AniLight quality normalization first. Prepare Anikoto behind the provider boundary as an experimental backup, but do not promote it to automatic production failover until the acceptance gate below passes.
+
+### Architecture
+
+```kotlin
+interface EpisodeProvider {
+    val id: ProviderId
+    suspend fun findSeries(identity: AnimeIdentity): ProviderMatchResult
+    suspend fun episodes(series: ProviderSeriesId): List<ProviderEpisode>
+    suspend fun resolve(request: EpisodeRequest): ProviderPlaybackResult
+}
+```
+
+`ProviderPlaybackResult` must distinguish:
+
+- `NativeSources(List<SourceEndpoint>)` — verified raw media usable by Media3;
+- `EmbedOnly(EmbedUrl)` — a web player URL, not a native source;
+- typed errors including not found, rate limited, stale embed, and provider changed.
+
+### Steps for Gemini
+
+1. Refactor AniLight behind `EpisodeProvider` without changing behavior first; pin existing contract fixtures.
+2. Add `AnikotoProvider` for series matching and episode discovery using `ani_id` when present, then `mal_id`, then scored title/year matching. Never assume AniList ID equals Anikoto numeric `id`.
+3. Put Anikoto calls behind the app’s own backend/proxy and cache series/episode metadata. The API explicitly discourages direct production-client use; many app installations behind carrier NAT could also share a public IP and trigger 429/403.
+4. Do not send raw embed URLs to ExoPlayer. Only return `NativeSources` if a documented/licensed endpoint supplies raw media and required headers. Do not scrape/deobfuscate third-party embed internals as a “stable API” strategy.
+5. If only `EmbedOnly` is available, keep it disabled by default for the native player. A WebView fallback is a separate product/security decision and must include domain allowlisting, JavaScript/interface restrictions, external-navigation blocking, lifecycle cleanup, ad/privacy review, and explicit reduced-feature UX. It will not guarantee the native 1080/720/480/360 selector.
+6. Add provider health telemetry: metadata success rate, episode match rate, raw-source resolution rate, first-frame success, HTTP 410/429/403 rate, and median resolution latency. Do not log full URLs or titles in release telemetry.
+7. Automatic cross-provider failover is permitted only when both providers resolve the same AniList/MAL identity and episode number/language. Require a confidence threshold and prevent sequel/episode drift.
+8. Failover order after qualification: retry/re-resolve current AniLight endpoint → alternate AniLight endpoint → Anikoto native source. Never jump to an Anikoto embed on a single transient AniLight timeout.
+
+### Anikoto qualification gate
+
+Before enabling as production backup, run a seven-day probe over at least 100 representative series/episodes and require:
+
+- at least 95% correct series and episode identity;
+- documented raw playback sources or an explicitly accepted embed-only UX;
+- at least 98% successful metadata responses excluding client misuse;
+- acceptable 410/stale-embed rate and first-frame success;
+- stable headers/redirects and HTTPS behavior;
+- no 429/403 under projected backend cache load;
+- terms/licensing/privacy review appropriate to distribution.
+
+If Anikoto cannot provide native raw sources, it does not meet the native-player backup requirement. Keep the adapter dormant or reject it; do not remove a working AniLight integration for an unproven embed-only replacement.
+
+### Provider-removal decision
+
+Remove AniLight only if S-07 fails because AniLight consistently supplies neither parseable adaptive playlists nor reliable fixed-resolution metadata, **and** Anikoto (or another provider) passes the native-source qualification gate. If AniLight passes S-07, retain it as primary and keep the qualified Anikoto adapter as backup. If neither passes, surface a typed no-source state; never fabricate quality options or unrelated media.
+
 ## Streaming observability specification
 
 Add debug-only structured events, with URLs redacted:
 - episode resolution duration
-- servers attempted/succeeded
-- selected source ID and policy reason
+- provider and servers attempted/succeeded
+- selected endpoint ID and policy reason
+- available rendition heights and active Media3 track height
 - first-frame latency
 - rebuffer count/duration
-- failover reason and destination
+- failover reason and destination provider/server
+- Anikoto 410/429/403 and embed-only counts during qualification
 
 Do not log query strings, cookies, signed tokens, complete response bodies, or viewing history in release logs.

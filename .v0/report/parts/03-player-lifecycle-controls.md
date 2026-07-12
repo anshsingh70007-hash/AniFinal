@@ -36,14 +36,27 @@ Do not mix a composition-owned player with a background service.
 - Maintain per-episode generation and endpoint cooldown to prevent A→B→A oscillation.
 - Resume within one second of the checkpoint and never silently change SUB/DUB.
 
-## P-05 — Correct Media3 configuration
+## P-05 — Correct Media3 configuration and enforce truthful quality state
 
 - Remove the forced 15 Mbps initial estimate; use Media3 estimation.
 - Reduce 50s/120s buffering defaults and expose a data-saver policy after measurement.
 - Disable cross-protocol redirects unless a documented source requires them.
 - Add `setHandleAudioBecomingNoisy(true)`.
 - Detect `.srt` as SubRip rather than VTT; retain ASS handling.
-- For quality selection, separate server endpoint choice from adaptive rendition constraints. Remove redundant min-size plus exact override and the self-seek used to apply an override.
+- Apply Part 02 S-07: server endpoint selection and quality policy are separate. The quality selector may show only Auto and real rendition heights; Misa/Near/Misora belong in a separate server selector.
+- Represent preference as `QualityPolicy.Auto` or `QualityPolicy.FixedHeight(Int)`. Persist and reapply it after episode changes, source preparation, and failover.
+- Populate available fixed heights from parsed HLS variants and/or Media3 `Tracks`. Do not infer an unknown provider source as Auto and then expose one Auto row per server.
+- In Auto, clear video overrides. In fixed mode, select a matching supported video track on the active endpoint. Remove redundant min-size plus exact override and remove the self-seek used to apply an override.
+- Observe Media3 track changes and derive `activeVideoHeight`; UI success requires the actual active format to satisfy the selected fixed-height policy. Keep requested policy separate from active track so unavailable quality cannot silently appear as Auto.
+- Cross-provider failover must preserve the requested policy, language, episode identity, and playback checkpoint. If the backup lacks the requested fixed height, display an explicit fallback/unavailable state and ask before changing the persisted policy.
+
+### Quality regression tests
+
+1. Three AniLight adaptive endpoints produce one Auto menu plus the union of actual heights, never `Auto - MISA/NEAR/MISORA`.
+2. Selecting each fixed height is asserted against Media3 `Tracks`/active `Format.height`.
+3. Next episode, process-state recreation, and AniLight endpoint failover reapply the same `QualityPolicy`.
+4. Anikoto `EmbedOnly` is never inserted into the native Media3 quality selector.
+5. If Anikoto later supplies qualified native sources, its renditions pass through the same normalized model; no provider-specific quality UI is allowed.
 
 ## P-06 — State ownership and error UX
 
