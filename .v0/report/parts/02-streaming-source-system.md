@@ -202,6 +202,45 @@ The user-facing quality menu must contain only `Auto`, `1080p`, `720p`, `480p`, 
 
 Across a fixture set of at least 20 AniLight episodes and all supported servers, the menu contains no server names, no duplicate Auto rows, no fabricated heights, and the selected fixed height matches the active Media3 video track within the normalization tolerance.
 
+### S-07B — Contingency mode: maximum-quality-only playback
+
+Use this fallback only if the normalized selector in S-07 remains unreliable after manifest/track inspection is implemented and tested. It is acceptable to remove manual low-quality choices, but it is **not** technically valid to label every stream as 1080p. The safe product behavior is “Best available” or no quality selector at all.
+
+#### Objective
+
+Always request the highest video rendition genuinely available from the chosen endpoint. Prefer 1080p when present; otherwise select the actual maximum height returned by the manifest/Media3 tracks. Remove 720p/480p/360p controls from the user interface rather than exposing broken controls.
+
+#### Required implementation
+
+1. Add `QualityPolicy.MaxAvailable` as a distinct policy. Do not implement this as `FixedHeight(1080)` because many episodes/endpoints may top out at 720p or an unknown height.
+2. After Media3 exposes video tracks, choose the highest supported rendition using deterministic ordering: greatest height, then bitrate, while filtering unsupported decoder formats. Prefer a rendition near 1080p when available; do not select 1440p/4K unless the product explicitly wants the extra bandwidth and the device supports it.
+3. For HLS master playlists, keep the master URL and apply Media3 maximum-size/track constraints. Do not replace it with a guessed child URL unless the source contract requires that.
+4. For a fixed single-rendition source, play it unchanged and report the detected height if available. Unknown quality must remain “Best available,” never “1080p.”
+5. Remove or hide the quality button when `MaxAvailable` is the only policy. If a label is retained, show `Best available`; optionally show read-only `Playing 1080p`/`Playing 720p` only after `activeVideoHeight` is observed.
+6. Apply the same policy after episode changes, same-provider failover, and cross-provider failover. Re-evaluate tracks on every new endpoint; never carry a stale track-group override into a new media item.
+7. Add an optional setting named `Prefer highest quality` only if users need control. It should default according to product policy and warn about mobile-data usage. Do not call it “Force 1080p.”
+8. Maintain an emergency decoder fallback: if the highest rendition fails with a verified decoder/format error, retry the next-highest compatible rendition once and disclose the fallback. Network buffering alone must not permanently downgrade the persisted policy.
+
+#### Performance and UX warnings
+
+- Highest-only playback increases startup latency, buffering, data usage, CDN traffic, battery usage, and decoder pressure on low-end/TV devices.
+- A 1080p rendition encoded with an unsupported codec may be less usable than a compatible 720p rendition; compatibility must outrank nominal resolution.
+- Auto ABR is normally more resilient on unstable connections. Removing it is a deliberate product tradeoff, not a general technical improvement.
+- The application must not claim 1080p based on a server name, URL, or requested policy. Only the active Media3 `Format.height` or trusted manifest metadata can support that label.
+
+#### Verification checklist
+
+- Endpoint with 1080/720/480/360 selects an active 1080-class track and exposes no manual low-quality rows.
+- Endpoint capped at 720p plays 720p and displays “Best available” or truthful “Playing 720p,” never 1080p.
+- Single unknown rendition plays without a fabricated quality label.
+- Unsupported 1080 codec falls back once to the highest compatible rendition without changing episode/language/server unnecessarily.
+- Next episode and every failover clear the old override, inspect new tracks, and select the new maximum.
+- Metered-network test confirms expected high data consumption is communicated.
+
+#### Success criteria
+
+The quality menu contains no fake or server-derived options; every tested episode selects the highest decoder-compatible rendition actually offered; observed UI height matches the active Media3 format; and unavailable 1080p content is never represented as 1080p.
+
 ## S-08 — Anikoto evaluation and backup-provider architecture
 
 - **Severity:** High availability architecture

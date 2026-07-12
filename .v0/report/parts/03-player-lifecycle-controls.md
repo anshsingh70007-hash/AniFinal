@@ -56,7 +56,13 @@ Do not mix a composition-owned player with a background service.
 2. Selecting each fixed height is asserted against Media3 `Tracks`/active `Format.height`.
 3. Next episode, process-state recreation, and AniLight endpoint failover reapply the same `QualityPolicy`.
 4. Anikoto `EmbedOnly` is never inserted into the native Media3 quality selector.
-5. If Anikoto later supplies qualified native sources, its renditions pass through the same normalized model; no provider-specific quality UI is allowed.
+5. If Anikoto or Miruro later supplies qualified native sources, its renditions pass through the same normalized model; no provider-specific quality UI is allowed.
+
+### Maximum-quality-only contingency
+
+If Part 02 S-07 cannot produce a reliable selector, implement S-07B instead of continuing to patch provider labels. Use `QualityPolicy.MaxAvailable`, hide manual quality rows, and select the highest decoder-compatible track after every media preparation. Prefer 1080p when it exists, but never label a 720p/unknown stream as 1080p. The UI should show `Best available` or a read-only detected active height; it must not show Auto/server variants.
+
+Add regression tests for 1080-capable, 720-capped, unknown single-rendition, unsupported-codec, next-episode, same-provider failover, and cross-provider failover scenarios. The active `Format.height`, not ViewModel intent alone, determines whether maximum-quality selection succeeded.
 
 ## P-06 — State ownership and error UX
 

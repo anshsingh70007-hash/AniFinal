@@ -26,7 +26,7 @@ This file is the ordering contract for Gemini. Parts 01–05 define evidence and
 
 1. Add typed provider match results and confidence tests.
 2. Preserve stable provider/source/server/language/header identity.
-3. Fix AniLight quality normalization first: parse actual HLS/Media3 renditions, separate quality policy from server identity, and eliminate `Auto - MISA/NEAR/MISORA` rows.
+3. Fix AniLight quality normalization first: parse actual HLS/Media3 renditions, separate quality policy from server identity, and eliminate `Auto - MISA/NEAR/MISORA` rows. If the normalized selector still fails its acceptance tests, stop exposing manual qualities and activate Part 02 S-07B maximum-quality-only mode: prefer real 1080p, otherwise play the highest decoder-compatible rendition with a truthful `Best available`/detected-height label.
 4. Resolve AniLight servers with bounded immutable concurrency and deterministic ordering.
 5. Introduce failover controller with classification/checkpoints that preserves requested quality and language.
 6. Add self-hosted Miruro and Anikoto adapters behind `EpisodeProvider`; keep both experimental. Miruro community implementations claim native M3U8 potential but depend on unofficial reverse-engineered behavior and Cloudflare-sensitive infrastructure. Anikoto currently exposes embed URLs rather than a proven Media3 contract.
