@@ -313,7 +313,11 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val providerImpl = providers[request.provider]
             ?: return ProviderPlaybackResult.Error(PlaybackErrorType.NoProviderMatch, "Provider not found")
         
-        val result = providerImpl.resolve(request)
+        val resolvedSlug = providerMappingStore.getMapping(request.provider, request.animeId)?.slug
+            ?: request.seriesSlug
+
+        val correctedRequest = request.copy(seriesSlug = resolvedSlug)
+        val result = providerImpl.resolve(correctedRequest)
         if (result is ProviderPlaybackResult.Success) {
             val filteredSources = result.response.sources.filter { !AdBlocker.shouldBlock(it.url) }
             if (filteredSources.isEmpty()) {

@@ -219,21 +219,23 @@ class PlayerViewModel(
 
                         val verifiedSource = withContext(ioDispatcher) {
                             val startTime = System.currentTimeMillis()
-                            val deferreds = langSources.map { source ->
-                                async {
-                                    val isLive = try {
-                                        withTimeoutOrNull(1500L) {
-                                            val status = repository.checkUrlStatus(source.url, source.headers)
-                                            android.util.Log.d("PlayerViewModel", "Checked server ${source.server.value} (${source.audioType}): status=$status in ${System.currentTimeMillis() - startTime}ms")
-                                            status in 200..399
-                                        } ?: false
-                                    } catch (e: Exception) {
-                                        false
+                            coroutineScope {
+                                val deferreds = langSources.map { source ->
+                                    async {
+                                        val isLive = try {
+                                            withTimeoutOrNull(1500L) {
+                                                val status = repository.checkUrlStatus(source.url, source.headers)
+                                                android.util.Log.d("PlayerViewModel", "Checked server ${source.server.value} (${source.audioType}): status=$status in ${System.currentTimeMillis() - startTime}ms")
+                                                status in 200..399
+                                            } ?: false
+                                        } catch (e: Exception) {
+                                            false
+                                        }
+                                        if (isLive) source else null
                                     }
-                                    if (isLive) source else null
                                 }
+                                deferreds.map { it.await() }.firstOrNull { it != null }
                             }
-                            deferreds.map { it.await() }.firstOrNull { it != null }
                         }
 
                         var chosenSource = verifiedSource
@@ -242,20 +244,22 @@ class PlayerViewModel(
                             val fallbackSources = allSources.filter { it.audioType == fallbackAudio }
                             if (fallbackSources.isNotEmpty()) {
                                 val verifiedFallback = withContext(ioDispatcher) {
-                                    val deferreds = fallbackSources.map { source ->
-                                        async {
-                                            val isLive = try {
-                                                withTimeoutOrNull(1500L) {
-                                                    val status = repository.checkUrlStatus(source.url, source.headers)
-                                                    status in 200..399
-                                                } ?: false
-                                            } catch (e: Exception) {
-                                                false
+                                    coroutineScope {
+                                        val deferreds = fallbackSources.map { source ->
+                                            async {
+                                                val isLive = try {
+                                                    withTimeoutOrNull(1500L) {
+                                                        val status = repository.checkUrlStatus(source.url, source.headers)
+                                                        status in 200..399
+                                                    } ?: false
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                                if (isLive) source else null
                                             }
-                                            if (isLive) source else null
                                         }
+                                        deferreds.map { it.await() }.firstOrNull { it != null }
                                     }
-                                    deferreds.map { it.await() }.firstOrNull { it != null }
                                 }
                                 if (verifiedFallback != null) {
                                     chosenSource = verifiedFallback
