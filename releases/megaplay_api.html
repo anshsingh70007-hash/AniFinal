@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anikoto video API — HiAnime library &amp; Anikoto</title>
+    <meta name="description"
+        content="HiAnime shut down, but MegaPlay still hosts the full library for embeds. Use Anikoto API endpoints to list series and episodes like you used to scrape HiAnime — same library and IDs.">
+    <link rel="stylesheet" href="https://megaplay.buzz/lib/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #08060c;
+            --bg-elevated: #100d16;
+            --bg-card: #14101f;
+            --border: rgba(162, 155, 254, 0.12);
+            --text: #f4f2f8;
+            --muted: #a8a3b8;
+            --accent: #6c5ce7;
+            --accent-soft: #a29bfe;
+            --accent-dim: rgba(108, 92, 231, 0.12);
+            --success: #00b894;
+            --danger: #ff7675;
+            --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+            --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+            --doc-text: 0.9375rem;
+            --doc-text-weight: 500;
+            --doc-line: 1.65;
+            /* Smaller copy inside doc sections (Usage, etc.) */
+            --doc-panel-text: 0.8125rem;
+            --doc-panel-line: 1.6;
+            --doc-panel-h2: 0.9375rem;
+            --doc-panel-h3: 0.8125rem;
+            --radius: 14px;
+            --radius-lg: 22px;
+            --shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Beat sitewide Poppins from styles.css — same stack as Test Your Embed rail */
+        .doc-body,
+        .doc-body input,
+        .doc-body select,
+        .doc-body textarea,
+        .doc-body button {
+            font-family: var(--sans);
+        }
+
+        body.doc-body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: var(--sans);
+            color: var(--text);
+            font-size: var(--doc-text);
+            font-weight: var(--doc-text-weight);
+            line-height: var(--doc-line);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-feature-settings: "kern" 1, "liga" 1;
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 900px 480px at 15% -15%, rgba(108, 92, 231, 0.35), transparent 55%),
+                radial-gradient(ellipse 700px 400px at 95% 10%, rgba(162, 155, 254, 0.12), transparent 50%),
+                radial-gradient(ellipse 600px 500px at 50% 120%, rgba(108, 92, 231, 0.08), transparent 45%);
+        }
+
+        a {
+            color: var(--accent-soft);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* Top strip */
+        .doc-strip {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            border-bottom: 1px solid var(--border);
+            background: rgba(8, 6, 12, 0.82);
+            backdrop-filter: blur(14px);
+        }
+
+        .doc-strip-inner {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 0.85rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .doc-logo {
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            font-size: 1rem;
+            color: var(--text);
+        }
+
+        .doc-logo span {
+            color: var(--accent-soft);
+        }
+
+        .doc-strip-spacer {
+            flex: 1;
+        }
+
+        .doc-strip-tag {
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--accent-soft);
+            border: 1px solid rgba(162, 155, 254, 0.35);
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            background: var(--accent-dim);
+        }
+
+        /* Hero — offset card, not centered pill stack */
+        .doc-hero-wrap {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 2.5rem 1.25rem 1.5rem;
+        }
+
+        .doc-hero {
+            position: relative;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            background: linear-gradient(135deg, rgba(20, 16, 31, 0.95), rgba(12, 10, 18, 0.98));
+            box-shadow: var(--shadow);
+            padding: 2.25rem 2rem 2rem;
+            overflow: hidden;
+        }
+
+        .doc-hero::before {
+            content: "";
+            position: absolute;
+            inset: -40% 40% 40% -30%;
+            background: radial-gradient(circle, rgba(108, 92, 231, 0.22), transparent 65%);
+            pointer-events: none;
+        }
+
+        .doc-hero-inner {
+            position: relative;
+            max-width: 52rem;
+        }
+
+        .doc-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent-soft);
+            margin-bottom: 1rem;
+        }
+
+        .doc-hero h1 {
+            margin: 0 0 0.85rem;
+            font-size: clamp(2rem, 4vw, 2.75rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            background: linear-gradient(105deg, #fff 0%, var(--accent-soft) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .doc-hero-lead {
+            margin: 0;
+            font-size: var(--doc-text);
+            font-weight: var(--doc-text-weight);
+            line-height: var(--doc-line);
+            color: var(--muted);
+            max-width: 38rem;
+        }
+
+        /* Main layout: editorial column + sticky rail */
+        .doc-shell {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 0 1.25rem 4rem;
+        }
+
+        .doc-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 380px;
+            gap: 1.75rem;
+            align-items: start;
+        }
+
+        @media (max-width: 1024px) {
+            .doc-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .doc-main {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .doc-panel {
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            background: rgba(20, 16, 31, 0.65);
+            padding: 1.35rem 1.4rem;
+            transition: border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .doc-panel:hover {
+            border-color: rgba(162, 155, 254, 0.28);
+            transform: translateY(-1px);
+        }
+
+        .doc-panel h2 {
+            margin: 0 0 0.5rem;
+            font-size: var(--doc-panel-h2);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.3;
+            color: var(--accent-soft);
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+        }
+
+        .doc-panel h2 i {
+            opacity: 0.9;
+        }
+
+        .doc-panel h3 {
+            margin: 1rem 0 0.4rem;
+            font-size: var(--doc-panel-h3);
+            font-weight: 700;
+            letter-spacing: -0.015em;
+            line-height: 1.35;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .doc-panel p {
+            margin: 0 0 0.55rem;
+            color: var(--muted);
+            font-size: var(--doc-panel-text);
+            font-weight: 500;
+            line-height: var(--doc-panel-line);
+        }
+
+        .doc-main .doc-panel ul,
+        .doc-main .doc-panel ol {
+            font-size: var(--doc-panel-text);
+            font-weight: 500;
+            line-height: var(--doc-panel-line);
+        }
+
+        .doc-main .doc-panel strong {
+            font-weight: 700;
+        }
+
+        /* Contact fields inside main panels — match smaller section text */
+        .doc-main .doc-panel .doc-input,
+        .doc-main .doc-panel .doc-select,
+        .doc-main .doc-panel .doc-textarea {
+            font-size: var(--doc-panel-text);
+        }
+
+        .doc-main .doc-panel .doc-field label {
+            font-size: 0.62rem;
+        }
+
+        .doc-main .doc-panel .doc-btn {
+            font-size: var(--doc-panel-text);
+        }
+
+        .doc-main .doc-panel .doc-tip {
+            font-size: 0.75rem;
+        }
+
+        .doc-panel p:last-child {
+            margin-bottom: 0;
+        }
+
+        .doc-main .doc-alert {
+            display: flex;
+            gap: 0.85rem;
+            align-items: flex-start;
+            padding: 0.85rem 0.95rem;
+            border-radius: var(--radius);
+            margin-bottom: 0;
+            font-size: var(--doc-panel-text);
+            font-weight: 500;
+            line-height: var(--doc-panel-line);
+        }
+
+        .doc-alert strong {
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .doc-alert i {
+            font-size: 1.05rem;
+            margin-top: 0.08rem;
+            flex-shrink: 0;
+        }
+
+        .doc-alert.info {
+            background: rgba(108, 92, 231, 0.12);
+            border: 1px solid rgba(108, 92, 231, 0.28);
+            color: var(--text);
+        }
+
+        .doc-alert.warn {
+            background: rgba(255, 118, 117, 0.08);
+            border: 1px solid rgba(255, 118, 117, 0.25);
+            color: var(--text);
+        }
+
+        .doc-alert.success {
+            background: rgba(0, 184, 148, 0.1);
+            border: 1px solid rgba(0, 184, 148, 0.28);
+            color: var(--text);
+        }
+
+        /* Anikoto API — featured doc card */
+        .doc-panel.anikoto-card {
+            position: relative;
+            padding-left: 1.55rem;
+            background: linear-gradient(155deg, rgba(108, 92, 231, 0.08) 0%, rgba(20, 16, 31, 0.72) 42%, rgba(14, 11, 22, 0.88) 100%);
+            border-color: rgba(162, 155, 254, 0.28);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .doc-panel.anikoto-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            border-radius: var(--radius) 0 0 var(--radius);
+            background: linear-gradient(180deg, #a29bfe, #6c5ce7 55%, #5548c4);
+            opacity: 0.95;
+        }
+
+        .doc-panel.anikoto-card>h2 {
+            margin-top: 0;
+        }
+
+        .anikoto-feature-list {
+            list-style: none;
+            margin: 0 0 1rem;
+            padding: 0;
+        }
+
+        .anikoto-feature-list li {
+            position: relative;
+            padding: 0.35rem 0 0.35rem 1.35rem;
+            color: var(--muted);
+            font-size: var(--doc-panel-text);
+            font-weight: 500;
+            line-height: var(--doc-panel-line);
+        }
+
+        .anikoto-feature-list li::before {
+            content: "";
+            position: absolute;
+            left: 0.2rem;
+            top: 0.65rem;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+            box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.2);
+        }
+
+        .anikoto-base {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.6rem 1rem;
+            margin: 0.85rem 0 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            background: rgba(8, 6, 12, 0.72);
+            border: 1px solid rgba(162, 155, 254, 0.18);
+        }
+
+        .anikoto-base-label {
+            font-size: 0.62rem;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .anikoto-base code {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #e8e4ff;
+            background: rgba(108, 92, 231, 0.18);
+            padding: 0.25rem 0.5rem;
+            border-radius: 8px;
+            border: 1px solid rgba(162, 155, 254, 0.2);
+        }
+
+        .anikoto-endpoints {
+            list-style: none;
+            margin: 0 0 1.1rem;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+
+        .anikoto-ep {
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: rgba(8, 6, 12, 0.45);
+            padding: 0.75rem 0.85rem;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .anikoto-ep:hover {
+            border-color: rgba(162, 155, 254, 0.35);
+            background: rgba(108, 92, 231, 0.06);
+        }
+
+        .anikoto-ep strong {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--accent-soft);
+            margin-bottom: 0.4rem;
+        }
+
+        .anikoto-ep code {
+            display: block;
+            font-size: 0.78rem;
+            line-height: 1.55;
+            word-break: break-all;
+            background: transparent;
+            padding: 0;
+            color: #d8d4ff;
+        }
+
+        .anikoto-ep a {
+            font-size: 0.8125rem;
+            font-weight: 600;
+        }
+
+
+
+
+        .doc-panel.anikoto-card .doc-alert.info {
+            margin-top: 0.85rem;
+            border-radius: 12px;
+            background: rgba(108, 92, 231, 0.1);
+            border-color: rgba(162, 155, 254, 0.32);
+        }
+
+        .doc-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 1.25rem 0;
+        }
+
+        .doc-code {
+            background: #0e0c14;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.75rem 0.85rem;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #d8d4ff;
+            overflow-x: auto;
+            line-height: 1.58;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .doc-main code {
+            font-family: var(--mono);
+            font-size: 0.8em;
+            background: var(--accent-dim);
+            color: var(--accent-soft);
+            padding: 0.1rem 0.32rem;
+            border-radius: 5px;
+        }
+
+        .param-table-container {
+            overflow-x: auto;
+            margin: 0.75rem 0;
+        }
+
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: var(--doc-panel-text);
+            font-weight: 500;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .param-table th,
+        .param-table td {
+            padding: 0.65rem 0.85rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .param-table th {
+            background: rgba(108, 92, 231, 0.15);
+            color: var(--accent-soft);
+            font-weight: 700;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .param-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .param-table td:first-child {
+            font-family: var(--mono);
+            color: var(--accent-soft);
+            font-size: 0.75rem;
+        }
+
+        .param-table td:last-child {
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        .param-card {
+            display: none;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .param-card-header {
+            color: var(--accent-soft);
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            font-size: var(--doc-panel-h3);
+        }
+
+        .param-card-item {
+            display: flex;
+            margin-bottom: 0.4rem;
+            font-size: var(--doc-panel-text);
+            font-weight: 500;
+            line-height: var(--doc-panel-line);
+        }
+
+        .param-card-label {
+            min-width: 92px;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .param-card-value.required {
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        @media (max-width: 768px) {
+            .param-table {
+                display: none;
+            }
+
+            .param-card {
+                display: block;
+            }
+        }
+
+        /* Sticky embed rail */
+        .doc-rail {
+            position: sticky;
+            top: 72px;
+        }
+
+        @media (max-width: 1024px) {
+            .doc-rail {
+                position: static;
+            }
+        }
+
+        .doc-rail-card {
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(162, 155, 254, 0.22);
+            background: linear-gradient(165deg, rgba(26, 20, 40, 0.95), rgba(14, 11, 22, 0.98));
+            box-shadow: var(--shadow);
+            padding: 1.35rem 1.25rem 1.5rem;
+        }
+
+        .doc-rail-title {
+            margin: 0 0 0.35rem;
+            font-size: 1.0625rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.3;
+            color: var(--accent-soft);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .doc-rail-sub {
+            margin: 0 0 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            line-height: 1.65;
+            color: var(--muted);
+        }
+
+        .doc-field {
+            margin-bottom: 0.9rem;
+        }
+
+        .doc-field label {
+            display: block;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 0.35rem;
+        }
+
+        .doc-input,
+        .doc-select,
+        .doc-textarea {
+            width: 100%;
+            background: rgba(8, 6, 12, 0.65);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 10px;
+            padding: 0.65rem 0.8rem;
+            font-family: var(--sans);
+            font-size: var(--doc-text);
+            font-weight: 500;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        .doc-textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+
+        .doc-input:focus,
+        .doc-select:focus,
+        .doc-textarea:focus {
+            border-color: rgba(108, 92, 231, 0.55);
+        }
+
+        .doc-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a29bfe' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            padding-right: 2rem;
+            cursor: pointer;
+        }
+
+        .doc-btnrow {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.25rem;
+        }
+
+        .doc-btn {
+            border: none;
+            border-radius: 10px;
+            padding: 0.72rem 0.6rem;
+            font-family: var(--sans);
+            font-weight: 700;
+            font-size: 0.875rem;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            transition: transform 0.12s ease, opacity 0.12s ease;
+        }
+
+        .doc-btn.primary {
+            background: linear-gradient(135deg, var(--accent), #5548c4);
+            color: #fff;
+        }
+
+        .doc-btn.primary:hover {
+            opacity: 0.92;
+            transform: translateY(-1px);
+        }
+
+        .doc-btn.ghost {
+            background: transparent;
+            border: 1px solid rgba(162, 155, 254, 0.35);
+            color: var(--accent-soft);
+        }
+
+        .doc-btn.ghost:hover {
+            background: var(--accent-dim);
+        }
+
+        #request-form.is-loading .doc-input,
+        #request-form.is-loading .doc-select,
+        #request-form.is-loading .doc-textarea {
+            opacity: 0.65;
+            pointer-events: none;
+        }
+
+        #request-submit-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.92;
+        }
+
+        #request-submit-btn .req-send-icon {
+            display: inline-block;
+        }
+
+        #request-submit-btn.is-sending .req-send-icon {
+            display: none;
+        }
+
+        #request-submit-btn .req-loading-icon {
+            display: none;
+        }
+
+        #request-submit-btn.is-sending .req-loading-icon {
+            display: inline-block;
+            animation: req-spin 0.65s linear infinite;
+        }
+
+        @keyframes req-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .doc-out {
+            display: none;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .doc-out-grid {
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        .doc-outbox {
+            background: rgba(8, 6, 12, 0.55);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.65rem 0.75rem;
+        }
+
+        .doc-outbox-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            margin-bottom: 0.45rem;
+        }
+
+        .doc-outbox-head b {
+            font-size: 0.68rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .doc-outbox pre {
+            margin: 0;
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #c4b5fd;
+            white-space: pre-wrap;
+            word-break: break-all;
+            user-select: all;
+            cursor: text;
+        }
+
+        .doc-copy {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            border-radius: 8px;
+            padding: 0.3rem 0.45rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .doc-copy:hover {
+            color: var(--text);
+            border-color: rgba(162, 155, 254, 0.4);
+        }
+
+        .doc-preview {
+            margin-top: 0.75rem;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: #000;
+            aspect-ratio: 16 / 9;
+        }
+
+        .doc-preview iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+        }
+
+        .doc-tip {
+            margin: 0.55rem 0 0;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            line-height: 1.6;
+            color: var(--muted);
+        }
+    </style>
+</head>
+
+<body class="doc-body">
+    <header class="doc-strip">
+        <div class="doc-strip-inner">
+            <a href="/" class="doc-logo">MegaPlay <span>API</span></a>
+            <div class="doc-strip-spacer"></div>
+            <span class="doc-strip-tag"><i class="fas fa-code"></i> Documentation</span>
+        </div>
+    </header>
+
+    <div class="doc-hero-wrap">
+        <div class="doc-hero">
+            <div class="doc-hero-inner">
+                <div class="doc-badge"><i class="fas fa-book"></i> Documentation</div>
+                <h1>Anikoto video API</h1>
+                <p class="doc-hero-lead">HiAnime has shut down, but you can still use our API: we host the <strong style="color:var(--text);">full HiAnime library</strong> for playback. To discover anime and episode IDs the way you used to scrape HiAnime, use the <strong style="color:var(--text);">Anikoto API</strong> — Anikoto and HiAnime share the same library and server IDs, so legacy HiAnime episode IDs stay valid while Anikoto keeps recent series and episodes updated.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="doc-shell">
+        <div class="doc-grid">
+            <main class="doc-main">
+                <div class="doc-panel">
+                    <h2><i class="fas fa-book"></i> API Documentation</h2>
+                    <p>It's a complete solution for webmasters to start their own anime ready website using our easy API.</p>
+                    <div class="doc-alert warn">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <div>
+                            <strong>Note:</strong> Direct Access to Embed Links are Disabled. Links only work as Embed on your Websites,
+                            <a href="#test-embed">use this option to test your embed</a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="doc-panel anikoto-card" id="anikoto-api">
+                    <h2><i class="fas fa-plug"></i> Anikoto API (works like HiAnime)</h2>
+
+                    <p>
+                        HiAnime is no longer available, but you can still use the same anime library through
+                        <strong style="color:var(--text);">Anikoto API</strong>.
+                    </p>
+
+                    <p>You can:</p>
+                    <ul class="anikoto-feature-list">
+                        <li>Get latest anime (with pagination)</li>
+                        <li>Load a full series using its ID</li>
+                        <li>Get episode embed URLs for streaming</li>
+                    </ul>
+
+                    <p>
+                        Anikoto uses the same library and <code>embed id</code> system as HiAnime,
+                        so old HiAnime episode IDs will still work. Everything stays updated automatically.
+                    </p>
+
+                    <div class="anikoto-base">
+                        <span class="anikoto-base-label">Base URL</span>
+                        <code>https://anikotoapi.site</code>
+                    </div>
+
+                    <ul class="anikoto-endpoints">
+                        <li class="anikoto-ep">
+                            <strong>Recent anime</strong>
+                            <code>GET /recent-anime?page=1&amp;per_page=20</code>
+                        </li>
+                        <li class="anikoto-ep">
+                            <strong>Series + episodes</strong>
+                            <code>GET /series/{id}</code>
+                        </li>
+                        <li class="anikoto-ep">
+                            <strong>Docs &amp; demo</strong>
+                            <a href="https://anikotoapi.site/" rel="noopener noreferrer">https://anikotoapi.site/</a>
+                        </li>
+                    </ul>
+
+                    <div class="doc-alert info">
+                        <i class="fas fa-book-open"></i>
+                        <div>
+                            Full docs, examples, and limits are available at
+                            <a href="https://anikotoapi.site/" rel="noopener noreferrer">https://anikotoapi.site/</a>.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="doc-panel">
+                    <h2><i class="fas fa-cogs"></i> How It Works</h2>
+                    <p>Our service provides a reliable and efficient way to embed anime videos on your website without worrying about content availability or playback issues.</p>
+                    <div class="doc-divider"></div>
+                    <h3><i class="fas fa-shield-alt"></i> Reliability &amp; Future-Proofing</h3>
+                    <p>By using our service, you're ensuring that your anime website has consistent content availability regardless of what happens with the original sources:</p>
+                    <div class="doc-alert success">
+                        <i class="fas fa-clock"></i>
+                        <div>
+                            <strong>Long-term Solution:</strong> Our hosted content remains accessible even if the original source becomes unavailable or changes their access methods.
+                        </div>
+                    </div>
+                    <p>This makes our API the perfect long-term solution for anyone building a serious anime streaming platform that needs consistent content availability.</p>
+                </div>
+
+                <div class="doc-panel" id="usage">
+                    <h2><i class="fas fa-server"></i> Usage</h2>
+                    <ul style="margin:0; padding-left:1.15rem; color:var(--muted);">
+                        <li style="margin-bottom:.5rem;"><strong style="color:var(--text);">Embedded Domain:</strong> <code>https://megaplay.buzz/</code></li>
+                        <li style="margin-bottom:.5rem;"><strong style="color:var(--text);">Endpoint (catalog episode id — Anikoto / legacy HiAnime):</strong> <code>https://megaplay.buzz/stream/s-2/{aniwatch-ep-id}/{language}</code></li>
+                        <li style="margin-bottom:.5rem;"><strong style="color:var(--text);">Endpoint (MAL id + episode):</strong> <code>https://megaplay.buzz/stream/mal/{mal-id}/{ep-num}/{language}</code></li>
+                        <li><strong style="color:var(--text);">Endpoint (AniList id + episode):</strong> <code>https://megaplay.buzz/stream/ani/{anilist-id}/{ep-num}/{language}</code></li>
+                    </ul>
+                    <p style="margin-top:1rem;">Your website isn't based on Aniwatch or HiAnime? No problem — you can still access our server videos by <strong style="color:var(--text);">MAL</strong> or <strong style="color:var(--text);">AniList</strong> using the endpoints above. To resolve catalog IDs and episode lists from the HiAnime-era library, use the <a href="#anikoto-api">Anikoto API</a> first, then plug Embed IDs into <code>/stream/s-2/…</code> here.</p>
+
+                    <h3><i class="fas fa-list-ul"></i> Valid parameters (<code>/stream/s-2/…</code> URL)</h3>
+                    <div class="param-card">
+                        <div class="param-card-header">{aniwatch-ep-id}</div>
+                        <div class="param-card-item">
+                            <div class="param-card-label">Description:</div>
+                            <div class="param-card-value">Stream episode id — use <code>episode_embed_id</code> from Anikoto <code>/series/{id}</code> (or legacy HiAnime <code>?ep=</code> value when you still have it)</div>
+                        </div>
+                        <div class="param-card-item">
+                            <div class="param-card-label">Required:</div>
+                            <div class="param-card-value required">Yes</div>
+                        </div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-card-header">{language}</div>
+                        <div class="param-card-item">
+                            <div class="param-card-label">Description:</div>
+                            <div class="param-card-value">Language version (sub/dub)</div>
+                        </div>
+                        <div class="param-card-item">
+                            <div class="param-card-label">Required:</div>
+                            <div class="param-card-value required">Yes</div>
+                        </div>
+                    </div>
+                    <div class="param-table-container">
+                        <table class="param-table">
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Description</th>
+                                <th>Required</th>
+                            </tr>
+                            <tr>
+                                <td>{aniwatch-ep-id}</td>
+                                <td>Stream id (<code>episode_embed_id</code> from Anikoto, or legacy HiAnime <code>?ep=</code>)</td>
+                                <td>Yes</td>
+                            </tr>
+                            <tr>
+                                <td>{language}</td>
+                                <td>Language version (sub/dub)</td>
+                                <td>Yes</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <p style="margin-top:0.75rem;">For MAL/AniList URLs, use numeric <code>{mal-id}</code> or <code>{anilist-id}</code> and <code>{ep-num}</code> (episode number), then <code>{language}</code> as <code>sub</code> or <code>dub</code>.</p>
+                    <p style="margin-top:0.75rem;"><a href="#player-events" style="color:var(--accent);">Player events &amp; tracking</a> — monitor playback from your parent page (progress, complete, errors).</p>
+                </div>
+
+                <div class="doc-panel">
+                    <h2><i class="fas fa-search"></i> Where to find the episode ID?</h2>
+                    <p>Use the <a href="#anikoto-api">Anikoto API</a>: call <code>GET https://anikotoapi.site/series/{id}</code> and read each episode’s <code>episode_embed_id</code> (same server id as the old HiAnime catalog). That id is what you pass as <code>{aniwatch-ep-id}</code> in <code>https://megaplay.buzz/stream/s-2/{aniwatch-ep-id}/{language}</code></p>
+                    <p>If you still have a numeric episode ID from when HiAnime was online, it continues to work here</p>
+                    <div class="doc-alert info">
+                        <i class="fas fa-lightbulb"></i>
+                        <div>
+                            <strong>Pro tip:</strong> Start from <code>GET https://anikotoapi.site/recent-anime</code> to browse IDs, then open <code>/series/{id}</code> for the full episode list and embed hints before building your MegaPlay iframe URLs.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="doc-panel">
+                    <h2><i class="fas fa-code"></i> Embed Example</h2>
+                    <p>URL: <code>https://megaplay.buzz/stream/s-2/136197/dub</code></p>
+                    <div class="doc-code">&lt;iframe src="https://megaplay.buzz/stream/s-2/136197/dub" width="100%" height="100%" frameborder="0" scrolling="no" allowfullscreen&gt;&lt;/iframe&gt;</div>
+                </div>
+
+                <div class="doc-panel" id="player-events">
+                    <h2><i class="fas fa-chart-line"></i> Player Events (auto-next &amp; watch time)</h2>
+                    <p>The player sends events to the parent page using <code>postMessage</code>. You can listen from the page where the iframe is embedded (auto-next, track user play time, etc.).</p>
+
+                    <h3><i class="fas fa-code"></i> Basic listener</h3>
+                    <div class="doc-code">window.addEventListener("message", function (event) {
+  let data = event.data;
+
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch (e) {
+      return;
+    }
+  }
+
+  if (data.channel === "megacloud") {
+    console.log(data);
+  }
+
+  if (data.type === "watching-log") {
+    console.log(data);
+  }
+});</div>
+
+                    <h3><i class="fas fa-list"></i> Events</h3>
+                    <div class="param-table-container">
+                        <table class="param-table">
+                            <tr>
+                                <th>Event</th>
+                                <th>Description</th>
+                            </tr>
+                            <tr>
+                                <td><code>time</code></td>
+                                <td>Sent during playback with current position and progress.</td>
+                            </tr>
+                            <tr>
+                                <td><code>complete</code></td>
+                                <td>Sent when playback reaches the end of the episode.</td>
+                            </tr>
+                            <tr>
+                                <td><code>error</code></td>
+                                <td>Sent when playback fails.</td>
+                            </tr>
+                            <tr>
+                                <td><code>watching-log</code></td>
+                                <td>Sent during playback — current time and duration (check <code>data.type === "watching-log"</code>).</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <h3><i class="fas fa-clock"></i> Event data</h3>
+                    <div class="doc-code">{
+  event: "time",
+  time: number,
+  duration: number,
+  percent: number
+}</div>
+                    <div class="doc-code" style="margin-top:0.65rem;">{
+  type: "watching-log",
+  currentTime: number,
+  duration: number
+}</div>
+
+                    <h3><i class="fas fa-terminal"></i> Example usage</h3>
+                    <div class="doc-code">if (data.event === "complete") {
+  // handle episode completion
+}
+
+if (data.event === "time") {
+  // handle progress updates
+}
+
+if (data.type === "watching-log") {
+  // handle watch time / logging
+}</div>
+
+                    <p class="doc-tip" style="margin-top:0.85rem;">In production, check <code>event.origin</code> matches your MegaPlay embed URL before trusting messages.</p>
+                </div>
+
+                <div class="doc-panel" id="mal-note">
+                    <h2><i class="fas fa-database"></i> MAL / AniList coverage</h2>
+                    <div class="doc-alert warn">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <div>
+                            <strong>Warning:</strong> We have the full library on our servers, but not every show is synced or mapped to <strong style="color:var(--text);">MAL</strong> and <strong style="color:var(--text);">AniList</strong> IDs yet.
+                            If an embed using MAL or AniList doesn’t work, contact us with the form below — we’ll add or fix the mapping.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="doc-panel" id="contact">
+                    <h2><i class="fas fa-envelope"></i> Request a missing title</h2>
+                    <p>If a MAL or AniList ID doesn’t resolve even though the anime exists on our side, send the details below.</p>
+                    <form id="request-form">
+                        <div class="doc-field">
+                            <label for="req-type">ID type</label>
+                            <select class="doc-select" id="req-type" required>
+                                <option value="MAL">MAL</option>
+                                <option value="AniList">AniList</option>
+                            </select>
+                        </div>
+                        <div class="doc-field">
+                            <label for="req-id">ID</label>
+                            <input class="doc-input" id="req-id" placeholder="e.g. 5114" required />
+                        </div>
+                        <div class="doc-field">
+                            <label for="req-ep">Episode number (optional)</label>
+                            <input class="doc-input" id="req-ep" placeholder="e.g. 1" />
+                        </div>
+                        <div class="doc-field">
+                            <label for="req-note">Message</label>
+                            <textarea class="doc-textarea" id="req-note" placeholder="What’s wrong? Include title, language, etc." required></textarea>
+                        </div>
+                        <button type="submit" class="doc-btn primary" id="request-submit-btn" style="width:100%;" aria-busy="false">
+                            <i class="fas fa-paper-plane req-send-icon" aria-hidden="true"></i>
+                            <i class="fas fa-circle-notch req-loading-icon" aria-hidden="true"></i>
+                            <span class="req-btn-text">Send</span>
+                        </button>
+                        <p class="doc-tip" id="request-form-status" style="display:none;margin-top:0.65rem;" role="status"></p>
+                    </form>
+                </div>
+            </main>
+
+            <aside class="doc-rail" id="test-embed">
+                <div class="doc-rail-card">
+                    <h3 class="doc-rail-title"><i class="fas fa-vial"></i> Test Your Embed</h3>
+                    <p class="doc-rail-sub">Generate iframe code and preview. Episode id (from Anikoto / same as legacy HiAnime), or MAL/AniList + episode.</p>
+
+                    <form id="embed-form">
+                        <div class="doc-field">
+                            <label for="mode">Source</label>
+                            <select class="doc-select" id="mode">
+                                <option value="aniwatch_ep">Anikoto / legacy HiAnime episode id</option>
+                                <option value="mal_id">MAL id + episode</option>
+                                <option value="ani_id">AniList id + episode</option>
+                            </select>
+                        </div>
+
+                        <div class="doc-field" id="field-epid">
+                            <label for="episode-id">Episode ID (Anikoto / legacy HiAnime):</label>
+                            <input type="text" class="doc-input" id="episode-id" placeholder="Enter episode ID (e.g., 136197)" inputmode="numeric" autocomplete="off" />
+                        </div>
+
+                        <div class="doc-field" id="field-seriesid" style="display:none;">
+                            <label for="series-id">MAL / AniList id</label>
+                            <input type="text" class="doc-input" id="series-id" placeholder="e.g. 5114" inputmode="numeric" autocomplete="off" />
+                        </div>
+
+                        <div class="doc-field" id="field-epnum" style="display:none;">
+                            <label for="episode-num">Episode number</label>
+                            <input type="text" class="doc-input" id="episode-num" placeholder="e.g. 1" inputmode="numeric" autocomplete="off" />
+                        </div>
+
+                        <div class="doc-field">
+                            <label for="language">Language:</label>
+                            <select class="doc-select" id="language">
+                                <option value="sub">Sub</option>
+                                <option value="dub">Dub</option>
+                            </select>
+                        </div>
+
+                        <div class="doc-btnrow">
+                            <button type="submit" class="doc-btn primary"><i class="fas fa-play"></i> Generate Embed</button>
+                            <button type="button" class="doc-btn ghost" id="gen-both"><i class="fas fa-layer-group"></i> Sub + Dub</button>
+                        </div>
+                    </form>
+
+                    <div class="doc-out" id="embed-out">
+                        <div class="doc-out-grid" id="out-row"></div>
+                        <div class="doc-preview">
+                            <iframe id="preview-frame" src="" allowfullscreen></iframe>
+                        </div>
+                        <p class="doc-tip">Click a code block to select all. Use copy for iframe HTML.</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        const MAPPING_REQUEST_URL = "https:\/\/megaplay.buzz\/api\/mapping-request";
+
+        const $ = (id) => document.getElementById(id);
+
+        function buildEmbedUrl({ mode, episodeId, seriesId, episodeNum, language }) {
+            const origin = "https://megaplay.buzz";
+            if (mode === "aniwatch_ep") return `${origin}/stream/s-2/${encodeURIComponent(episodeId)}/${encodeURIComponent(language)}`;
+            if (mode === "mal_id") return `${origin}/stream/mal/${encodeURIComponent(seriesId)}/${encodeURIComponent(episodeNum)}/${encodeURIComponent(language)}`;
+            if (mode === "ani_id") return `${origin}/stream/ani/${encodeURIComponent(seriesId)}/${encodeURIComponent(episodeNum)}/${encodeURIComponent(language)}`;
+            throw new Error("Unknown mode");
+        }
+
+        function buildIframeCode(url) {
+            return `<iframe src="${url}" width="100%" height="100%" frameborder="0" scrolling="no" allowfullscreen></iframe>`;
+        }
+
+        function validPositiveInt(val) {
+            return /^[1-9]\d*$/.test(String(val || "").trim());
+        }
+
+        async function copyTextToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (_) { /* fall through */ }
+            }
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            ta.style.top = "0";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ta.setSelectionRange(0, text.length);
+            let ok = false;
+            try {
+                ok = document.execCommand("copy");
+            } catch (_) {}
+            document.body.removeChild(ta);
+            return ok;
+        }
+
+        function renderOutputs(items) {
+            const out = $("embed-out");
+            const row = $("out-row");
+            row.innerHTML = "";
+
+            for (const item of items) {
+                const box = document.createElement("div");
+                box.className = "doc-outbox";
+                const head = document.createElement("div");
+                head.className = "doc-outbox-head";
+                head.innerHTML = `<b>${item.label}</b><button type="button" class="doc-copy" aria-label="Copy iframe code"><i class="fa-regular fa-copy"></i></button>`;
+                const pre = document.createElement("pre");
+                pre.textContent = item.iframe;
+                pre.tabIndex = 0;
+                const selectPre = () => {
+                    const r = document.createRange();
+                    r.selectNodeContents(pre);
+                    const s = window.getSelection();
+                    s.removeAllRanges();
+                    s.addRange(r);
+                };
+                pre.addEventListener("click", selectPre);
+                box.appendChild(head);
+                box.appendChild(pre);
+                head.querySelector(".doc-copy").addEventListener("click", async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const btn = e.currentTarget;
+                    const ok = await copyTextToClipboard(pre.textContent);
+                    if (ok) {
+                        btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+                        setTimeout(() => (btn.innerHTML = '<i class="fa-regular fa-copy"></i>'), 1400);
+                    } else {
+                        selectPre();
+                        pre.focus();
+                    }
+                });
+                row.appendChild(box);
+            }
+
+            out.style.display = items.length ? "block" : "none";
+        }
+
+        function syncModeUI() {
+            const mode = $("mode").value;
+            const isAniwatch = mode === "aniwatch_ep";
+            $("field-epid").style.display = isAniwatch ? "block" : "none";
+            $("field-seriesid").style.display = isAniwatch ? "none" : "block";
+            $("field-epnum").style.display = isAniwatch ? "none" : "block";
+        }
+
+        $("mode").addEventListener("change", () => {
+            syncModeUI();
+            renderOutputs([]);
+            $("preview-frame").src = "";
+        });
+        syncModeUI();
+
+        $("embed-form").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const mode = $("mode").value;
+            const language = $("language").value;
+            const episodeId = $("episode-id").value.trim();
+            const seriesId = $("series-id").value.trim();
+            const episodeNum = $("episode-num").value.trim();
+
+            if (mode === "aniwatch_ep") {
+                if (!validPositiveInt(episodeId)) return alert("Please enter a valid episode ID.");
+            } else {
+                if (!validPositiveInt(seriesId)) return alert("Please enter a valid MAL/AniList id.");
+                if (!validPositiveInt(episodeNum)) return alert("Please enter a valid episode number.");
+            }
+
+            const url = buildEmbedUrl({ mode, episodeId, seriesId, episodeNum, language });
+            renderOutputs([{ label: `Embed (${language})`, iframe: buildIframeCode(url) }]);
+            $("preview-frame").src = url;
+            $("embed-out").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+
+        $("gen-both").addEventListener("click", () => {
+            const mode = $("mode").value;
+            const episodeId = $("episode-id").value.trim();
+            const seriesId = $("series-id").value.trim();
+            const episodeNum = $("episode-num").value.trim();
+
+            if (mode === "aniwatch_ep") {
+                if (!validPositiveInt(episodeId)) return alert("Please enter a valid episode ID.");
+            } else {
+                if (!validPositiveInt(seriesId)) return alert("Please enter a valid MAL/AniList id.");
+                if (!validPositiveInt(episodeNum)) return alert("Please enter a valid episode number.");
+            }
+
+            const subUrl = buildEmbedUrl({ mode, episodeId, seriesId, episodeNum, language: "sub" });
+            const dubUrl = buildEmbedUrl({ mode, episodeId, seriesId, episodeNum, language: "dub" });
+            renderOutputs([
+                { label: "Embed (sub)", iframe: buildIframeCode(subUrl) },
+                { label: "Embed (dub)", iframe: buildIframeCode(dubUrl) },
+            ]);
+            $("preview-frame").src = subUrl;
+            $("embed-out").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+
+        const requestFormEl = $("request-form");
+        const setRequestFormLoading = (loading) => {
+            const btn = $("request-submit-btn");
+            const textEl = btn.querySelector(".req-btn-text");
+            if (loading) {
+                requestFormEl.classList.add("is-loading");
+                btn.classList.add("is-sending");
+                btn.setAttribute("aria-busy", "true");
+                btn.disabled = true;
+                if (textEl) textEl.textContent = "Sending…";
+                requestFormEl.querySelectorAll("input, select, textarea").forEach((el) => {
+                    el.disabled = true;
+                });
+            } else {
+                requestFormEl.classList.remove("is-loading");
+                btn.classList.remove("is-sending");
+                btn.setAttribute("aria-busy", "false");
+                btn.disabled = false;
+                if (textEl) textEl.textContent = "Send";
+                requestFormEl.querySelectorAll("input, select, textarea").forEach((el) => {
+                    el.disabled = false;
+                });
+            }
+        };
+
+        $("request-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            if (requestFormEl.classList.contains("is-loading")) return;
+
+            const statusEl = $("request-form-status");
+            const btn = $("request-submit-btn");
+            const type = $("req-type").value;
+            const id = $("req-id").value.trim();
+            const ep = $("req-ep").value.trim();
+            const note = $("req-note").value.trim();
+            if (!id || !note) return alert("Please fill the required fields.");
+            const extId = parseInt(id, 10);
+            if (!Number.isFinite(extId) || extId <= 0) return alert("Please enter a valid numeric ID.");
+
+            statusEl.style.display = "none";
+            statusEl.textContent = "";
+            setRequestFormLoading(true);
+            try {
+                const res = await fetch(MAPPING_REQUEST_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_type: type,
+                        external_id: extId,
+                        episode: ep,
+                        message: note,
+                    }),
+                });
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) { /* ignore */ }
+                statusEl.style.display = "block";
+                if (res.ok && data.ok) {
+                    statusEl.style.color = "var(--success)";
+                    statusEl.textContent = "Thanks — we received your request.";
+                    $("request-form").reset();
+                } else {
+                    statusEl.style.color = "var(--danger)";
+                    statusEl.textContent = data.error || "Something went wrong. Please try again.";
+                }
+            } catch (err) {
+                statusEl.style.display = "block";
+                statusEl.style.color = "var(--danger)";
+                statusEl.textContent = "Network error. Please try again.";
+            } finally {
+                setRequestFormLoading(false);
+            }
+        });
+    </script>
+</body>
+
+</html>

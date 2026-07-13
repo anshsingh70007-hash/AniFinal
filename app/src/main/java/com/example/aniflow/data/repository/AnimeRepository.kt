@@ -24,8 +24,8 @@ interface AnimeRepository {
     
     // Updated repository contracts
     suspend fun getEpisodes(identity: AnimeIdentity): EpisodeLookupResult
-    suspend fun getEpisodesBySlug(provider: ProviderId, slug: String): List<Episode>
-    suspend fun getStreamingSources(request: EpisodeRequest): ProviderPlaybackResult
+    suspend fun getEpisodesBySlug(provider: ProviderId, slug: ProviderSeriesId): EpisodeLookupResult
+    suspend fun getStreamingSources(request: EpisodeRequest): PlaybackResult
     
     suspend fun checkUpdates(): AppUpdateInfo?
     suspend fun refreshSchedule(): Pair<List<AiringAnime>, List<Anime>>

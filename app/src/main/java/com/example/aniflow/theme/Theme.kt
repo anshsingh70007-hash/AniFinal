@@ -18,20 +18,11 @@ fun AniFlowTheme(
 ) {
     val context = LocalContext.current
     val settingsStore = remember { SettingsStore(context) }
-    val themeMode by settingsStore.themeMode.collectAsState(initial = "system")
-    val systemDark = isSystemInDarkTheme()
+    val themeMode by settingsStore.themeMode.collectAsState(initial = "dark")
 
     val isAmoled = themeMode == "amoled"
-    val isLight = themeMode == "system" && !systemDark
 
-    if (isLight) {
-        PrimaryDark = Color(0xFFF8FAFC)
-        PrimaryDarker = Color(0xFFF1F5F9)
-        TextPrimary = Color(0xFF0F172A)
-        TextSecondary = Color(0xFF475569)
-        SurfaceCard = Color(0xFFFFFFFF)
-        SurfaceBorder = Color(0xFFE2E8F0)
-    } else if (isAmoled) {
+    if (isAmoled) {
         PrimaryDark = Color(0xFF000000)
         PrimaryDarker = Color(0xFF000000)
         TextPrimary = Color(0xFFFFFFFF)

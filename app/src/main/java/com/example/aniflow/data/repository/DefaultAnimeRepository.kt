@@ -255,8 +255,8 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     private val providerMappingStore = ProviderMappingStore(context)
     private val providers: Map<ProviderId, EpisodeProvider> = mapOf(
         ProviderId.ANILIGHT to aniLightProvider,
-        ProviderId.ANIKOTO to AnikotoProvider(),
-        ProviderId.MIRURO to MiruroProvider()
+        ProviderId.ANIKOTO to AnikotoProvider(client),
+        ProviderId.MIRURO to MiruroProvider(client)
     )
 
     override suspend fun getEpisodes(identity: AnimeIdentity): EpisodeLookupResult {
@@ -266,64 +266,91 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             
             // Check persistence mapping store
             val mapping = providerMappingStore.getMapping(providerId, identity.anilistId)
+            var primaryResult: EpisodeLookupResult? = null
             if (mapping != null) {
-                val episodes = provider.episodes(mapping.slug)
-                if (episodes.isNotEmpty()) {
-                    return EpisodeLookupResult.Matched(providerId, mapping.slug, episodes)
+                val epResult = provider.getEpisodes(ProviderSeriesId(mapping.slug))
+                if (epResult is EpisodeLookupResult.Matched) {
+                    primaryResult = epResult
                 } else {
                     providerMappingStore.invalidateMapping(providerId, identity.anilistId)
                 }
             }
             
-            // Fallback to candidate search
-            val lookupResult = provider.findSeries(identity)
-            if (lookupResult is EpisodeLookupResult.Matched) {
-                val evidence = MappingEvidence(
-                    providerTitle = identity.title,
-                    anilistTitle = identity.englishTitle ?: identity.title,
-                    matchedBy = "HIGH_CONFIDENCE_SCORE",
-                    confidenceScore = 0.95
-                )
-                providerMappingStore.setMapping(
-                    ProviderMapping(
-                        provider = providerId,
-                        anilistId = identity.anilistId,
-                        slug = lookupResult.slug,
-                        evidence = evidence
-                    )
-                )
+            if (primaryResult == null) {
+                // Fallback to candidate search
+                val lookupResult = provider.findSeries(identity)
+                primaryResult = when (lookupResult) {
+                    is SeriesMatchResult.Matched -> {
+                        providerMappingStore.setMapping(
+                            ProviderMapping(
+                                provider = providerId,
+                                anilistId = identity.anilistId,
+                                slug = lookupResult.seriesId.value,
+                                evidence = lookupResult.evidence
+                            )
+                        )
+                        provider.getEpisodes(lookupResult.seriesId)
+                    }
+                    is SeriesMatchResult.Ambiguous -> {
+                        EpisodeLookupResult.Ambiguous(lookupResult.candidates)
+                    }
+                    is SeriesMatchResult.NotFound -> {
+                        EpisodeLookupResult.NotFound
+                    }
+                }
             }
-            return lookupResult
+
+            if (primaryResult is EpisodeLookupResult.Matched) {
+                return primaryResult
+            }
+
+            // Fallback to backup providers
+            for (backupId in listOf(ProviderId.MIRURO, ProviderId.ANIKOTO)) {
+                if (ProviderRegistry.isProviderEnabled(backupId)) {
+                    val backupProvider = providers[backupId]
+                    if (backupProvider != null) {
+                        val backupResult = backupProvider.getEpisodes(ProviderSeriesId(identity.anilistId.toString()))
+                        if (backupResult is EpisodeLookupResult.Matched) {
+                            return backupResult
+                        }
+                    }
+                }
+            }
+
+            return primaryResult
         } catch (e: Exception) {
             e.printStackTrace()
             return EpisodeLookupResult.Error(e.localizedMessage ?: "Unknown error")
         }
     }
 
-    override suspend fun getEpisodesBySlug(provider: ProviderId, slug: String): List<Episode> {
-        val providerImpl = providers[provider] ?: return emptyList()
+    override suspend fun getEpisodesBySlug(provider: ProviderId, slug: ProviderSeriesId): EpisodeLookupResult {
+        val providerImpl = providers[provider] ?: return EpisodeLookupResult.Error("Provider not found")
         return try {
-            providerImpl.episodes(slug)
+            providerImpl.getEpisodes(slug)
         } catch (e: Exception) {
-            emptyList()
+            EpisodeLookupResult.Error(e.localizedMessage ?: "Unknown error")
         }
     }
 
-    override suspend fun getStreamingSources(request: EpisodeRequest): ProviderPlaybackResult {
+    override suspend fun getStreamingSources(request: EpisodeRequest): PlaybackResult {
         val providerImpl = providers[request.provider]
-            ?: return ProviderPlaybackResult.Error(PlaybackErrorType.NoProviderMatch, "Provider not found")
+            ?: return PlaybackResult.Error(request.provider, PlaybackErrorType.NoProviderMatch, "Provider not found")
         
         val resolvedSlug = providerMappingStore.getMapping(request.provider, request.animeId)?.slug
             ?: request.seriesSlug
-
+ 
         val correctedRequest = request.copy(seriesSlug = resolvedSlug)
         val result = providerImpl.resolve(correctedRequest)
-        if (result is ProviderPlaybackResult.Success) {
-            val filteredSources = result.response.sources.filter { !AdBlocker.shouldBlock(it.url) }
+        if (result is PlaybackResult.NativeSources) {
+            val filteredSources = result.sources.filter { !AdBlocker.shouldBlock(it.url) }
             if (filteredSources.isEmpty()) {
-                return ProviderPlaybackResult.Error(PlaybackErrorType.NoSources, "No unblocked streaming sources found.")
+                return PlaybackResult.Error(request.provider, PlaybackErrorType.NoSources, "No unblocked streaming sources found.")
             }
-            return ProviderPlaybackResult.Success(result.response.copy(sources = filteredSources))
+            return PlaybackResult.NativeSources(result.provider, filteredSources, result.subtitles)
+        }
+        if (result is PlaybackResult.EmbedOnly) {
+            return PlaybackResult.TemporarilyUnavailable(request.provider)
         }
         return result
     }

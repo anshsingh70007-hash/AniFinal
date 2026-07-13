@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aniflow.data.WatchHistoryStore
 import com.example.aniflow.data.SettingsStore
+import com.example.aniflow.data.*
 import com.example.aniflow.data.model.*
 import com.example.aniflow.data.repository.AnimeRepository
 import kotlinx.coroutines.*
@@ -70,30 +71,61 @@ class PlayerViewModel(
     private var generationId = 0L
     private var resolutionJob: Job? = null
     private var reResolveAttempt = 0
+    private val failoverController = PlaybackFailoverController()
+    private val providerAttempts = mutableMapOf<ProviderId, Int>()
+    var activeProvider = ProviderId.ANILIGHT
+    val providerStatuses = MutableStateFlow<Map<ProviderId, ProviderStatus>>(emptyMap())
+    val loadingProvider = MutableStateFlow<ProviderId?>(null)
+    private val mismatchedProviders = mutableSetOf<ProviderId>()
+    private var preferredProviderSnapshot = ProviderId.ANILIGHT
+    private var resolvedProvider = ProviderId.ANILIGHT
+
+    fun updateProviderStatuses() {
+        val currentSelected = activeProvider
+        val currentLoading = loadingProvider.value
+        val statuses = ProviderId.entries.associateWith { provider ->
+            when {
+                provider == currentSelected -> ProviderStatus.Selected
+                provider == currentLoading -> ProviderStatus.Loading
+                !ProviderRegistry.isProviderEnabled(provider) -> ProviderStatus.Unconfigured
+                !ProviderRegistry.getCircuitBreaker(provider).canExecute() -> ProviderStatus.CircuitOpen
+                mismatchedProviders.contains(provider) -> ProviderStatus.IdentityMismatch
+                else -> ProviderStatus.Available
+            }
+        }
+        providerStatuses.value = statuses
+    }
 
     init {
         viewModelScope.launch {
             try {
-                playbackSpeed.value = settingsStore.defaultPlaybackSpeed.first()
-            } catch (e: Exception) {
-                android.util.Log.e("PlayerViewModel", "Failed to get default playback speed", e)
+                playbackSpeed.value = withTimeoutOrNull(100L) {
+                    settingsStore.defaultPlaybackSpeed.first()
+                } ?: 1.0f
+            } catch (e: Throwable) {
+                println("Failed to get default playback speed: ${e.message}")
             }
         }
         viewModelScope.launch {
             try {
-                selectedVideoQuality.value = settingsStore.qualityPreference.first()
-            } catch (e: Exception) {
+                selectedVideoQuality.value = withTimeoutOrNull(100L) {
+                    settingsStore.qualityPreference.first()
+                } ?: "auto"
+            } catch (e: Throwable) {
                 // ignore
             }
         }
         viewModelScope.launch {
             try {
-                val lang = settingsStore.languagePreference.first()
+                val lang = withTimeoutOrNull(100L) {
+                    settingsStore.languagePreference.first()
+                } ?: "sub"
                 selectedAudioType.value = if (lang.lowercase() == "dub") AudioType.DUB else AudioType.SUB
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // ignore
             }
         }
+        updateProviderStatuses()
     }
 
     private fun markEndpointFailed(endpointId: String) {
@@ -119,6 +151,11 @@ class PlayerViewModel(
             delay(3000L) // 3 seconds stable play milestone
             clearCooldown(current.id)
             reResolveAttempt = 0
+            if (activeProvider != current.provider) {
+                activeProvider = current.provider
+            }
+            ProviderRegistry.getCircuitBreaker(activeProvider).recordSuccess()
+            updateProviderStatuses()
         }
     }
 
@@ -146,7 +183,10 @@ class PlayerViewModel(
                     )
                     val result = repository.getEpisodes(identity)
                     val eps = when (result) {
-                        is EpisodeLookupResult.Matched -> result.episodes
+                        is EpisodeLookupResult.Matched -> {
+                            resolvedProvider = result.provider
+                            result.episodes
+                        }
                         else -> emptyList()
                     }
                     episodeList.value = eps
@@ -191,9 +231,28 @@ class PlayerViewModel(
             isLoading.value = true
             hasError.value = false
             try {
+                // Snapshot the preferred provider flow when a playback session starts
+                val preferred = try {
+                    withTimeoutOrNull(100L) {
+                        settingsStore.providerPreference.first()
+                    }?.lowercase() ?: "anilight"
+                } catch (e: Throwable) {
+                    "anilight"
+                }
+                preferredProviderSnapshot = when (preferred) {
+                    "miruro" -> ProviderId.MIRURO
+                    "anikoto" -> ProviderId.ANIKOTO
+                    else -> ProviderId.ANILIGHT
+                }
+                activeProvider = resolvedProvider
+
+                providerAttempts.clear()
+                mismatchedProviders.clear()
+                updateProviderStatuses()
+
                 val currentAnime = anime.value ?: return@launch
                 val request = EpisodeRequest(
-                    provider = ProviderId.ANILIGHT,
+                    provider = activeProvider,
                     seriesSlug = currentAnime.title,
                     episodeId = ep.id,
                     animeId = currentAnime.id,
@@ -203,12 +262,15 @@ class PlayerViewModel(
                 val result = repository.getStreamingSources(request)
                 if (currentGen != generationId) return@launch
 
-                if (result is ProviderPlaybackResult.Success) {
-                    val sources = result.response
-                    streamingSources.value = sources
+                if (result is PlaybackResult.NativeSources) {
+                    val response = EpisodeSourcesResponse(
+                        sources = result.sources,
+                        subtitles = result.subtitles
+                    )
+                    streamingSources.value = response
                     
                     val targetAudio = selectedAudioType.value
-                    val allSources = sources.sources
+                    val allSources = result.sources
                     if (allSources.isNotEmpty()) {
                         var langSources = allSources.filter { it.audioType == targetAudio }
                         if (langSources.isEmpty()) {
@@ -225,7 +287,7 @@ class PlayerViewModel(
                                         val isLive = try {
                                             withTimeoutOrNull(1500L) {
                                                 val status = repository.checkUrlStatus(source.url, source.headers)
-                                                android.util.Log.d("PlayerViewModel", "Checked server ${source.server.value} (${source.audioType}): status=$status in ${System.currentTimeMillis() - startTime}ms")
+                                                println("Checked server ${source.server.value} (${source.audioType}): status=$status in ${System.currentTimeMillis() - startTime}ms")
                                                 status in 200..399
                                             } ?: false
                                         } catch (e: Exception) {
@@ -284,15 +346,19 @@ class PlayerViewModel(
                     }
                     
                     selectedSubtitle.value = null
-                } else if (result is ProviderPlaybackResult.Error) {
-                    errorMessage.value = result.message
-                    hasError.value = true
+                } else if (result is PlaybackResult.EmbedOnly) {
+                    handleInitialResolutionFailure(PlaybackErrorType.NoSources, "Playback failed: Native playback is currently unavailable.")
+                } else if (result is PlaybackResult.TemporarilyUnavailable) {
+                    handleInitialResolutionFailure(PlaybackErrorType.TemporarilyUnavailable, "Provider temporarily unavailable.")
+                } else if (result is PlaybackResult.Error) {
+                    handleInitialResolutionFailure(result.errorType, result.message)
+                } else {
+                    handleInitialResolutionFailure(PlaybackErrorType.NoSources, "Failed to load streaming sources.")
                 }
             } catch (e: Exception) {
                 if (currentGen == generationId) {
                     e.printStackTrace()
-                    errorMessage.value = "Failed to fetch streaming sources."
-                    hasError.value = true
+                    handleInitialResolutionFailure(PlaybackErrorType.Network, "Failed to fetch streaming sources.")
                 }
             } finally {
                 if (currentGen == generationId) {
@@ -317,7 +383,7 @@ class PlayerViewModel(
 
                 val currentAnime = anime.value ?: return@launch
                 val request = EpisodeRequest(
-                    provider = ProviderId.ANILIGHT,
+                    provider = activeProvider,
                     seriesSlug = currentAnime.title,
                     episodeId = ep.id,
                     animeId = currentAnime.id,
@@ -325,9 +391,13 @@ class PlayerViewModel(
                     audioType = selectedAudioType.value
                 )
                 val sourcesResult = repository.getStreamingSources(request)
-                if (sourcesResult is ProviderPlaybackResult.Success) {
-                    streamingSources.value = sourcesResult.response
-                    val allSources = sourcesResult.response.sources
+                if (sourcesResult is PlaybackResult.NativeSources) {
+                    val response = EpisodeSourcesResponse(
+                        sources = sourcesResult.sources,
+                        subtitles = sourcesResult.subtitles
+                    )
+                    streamingSources.value = response
+                    val allSources = sourcesResult.sources
                     val matching = allSources.firstOrNull { it.server.value == selectedServer.value && it.audioType == selectedAudioType.value }
                         ?: allSources.firstOrNull()
                     
@@ -335,71 +405,295 @@ class PlayerViewModel(
                         selectedSource.value = matching
                         currentPosition.value = resumePositionMs
                     }
+                } else if (sourcesResult is PlaybackResult.EmbedOnly) {
+                    handleInitialResolutionFailure(PlaybackErrorType.NoSources, "Playback failed: Native playback is currently unavailable.")
+                } else if (sourcesResult is PlaybackResult.Error) {
+                    handleInitialResolutionFailure(sourcesResult.errorType, sourcesResult.message)
+                } else {
+                    handleInitialResolutionFailure(PlaybackErrorType.NoSources, "Failed to load streaming sources.")
                 }
             } catch (e: Exception) {
                 android.util.Log.e("PlayerViewModel", "Re-resolution failed", e)
+                handleInitialResolutionFailure(PlaybackErrorType.Network, "Re-resolution failed: ${e.message}")
             } finally {
                 isLoading.value = false
             }
         }
     }
 
-    fun handlePlaybackError(error: androidx.media3.common.PlaybackException, currentPositionMs: Long) {
-        val currentSource = selectedSource.value ?: return
-        markEndpointFailed(currentSource.id)
-
+    private fun classifyPlaybackException(error: androidx.media3.common.PlaybackException): PlaybackErrorType {
         val cause = error.cause
         val responseCode = if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
             cause.responseCode
         } else {
             -1
         }
+        return when {
+            responseCode == 429 -> PlaybackErrorType.RateLimited
+            responseCode == 401 || responseCode == 403 || responseCode == 410 -> PlaybackErrorType.Network
+            error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED -> PlaybackErrorType.InvalidatedMapping
+            else -> PlaybackErrorType.Network
+        }
+    }
 
-        if (responseCode == 401 || responseCode == 403 || responseCode == 410) {
-            android.util.Log.d("PlayerViewModel", "HTTP $responseCode. Re-resolving URL...")
-            reResolveSources(currentPositionMs)
+    fun handlePlaybackError(error: androidx.media3.common.PlaybackException, currentPositionMs: Long) {
+        val currentSource = selectedSource.value ?: return
+        val currentAnime = anime.value ?: return
+        val eps = episodeList.value
+        val index = currentEpisodeIndex.value
+        if (index !in eps.indices) return
+        val ep = eps[index]
+
+        markEndpointFailed(currentSource.id)
+
+        val errorType = classifyPlaybackException(error)
+
+        val currentAttempts = providerAttempts.getOrDefault(activeProvider, 0)
+        providerAttempts[activeProvider] = currentAttempts + 1
+
+        val checkpoint = PlaybackCheckpoint(
+            identity = AnimeIdentity(
+                anilistId = currentAnime.id,
+                title = currentAnime.title,
+                englishTitle = currentAnime.englishTitle,
+                seasonYear = currentAnime.seasonYear,
+                format = if (currentAnime.episodes == 1) "MOVIE" else "TV"
+            ),
+            episodeNumber = ep.number,
+            audioType = selectedAudioType.value,
+            qualityPolicy = selectedQualityPolicy.value,
+            subtitlePreference = selectedSubtitle.value,
+            positionMs = currentPositionMs,
+            speed = playbackSpeed.value,
+            generationId = generationId
+        )
+
+        val decision = failoverController.determineFailover(
+            checkpoint = checkpoint,
+            currentProvider = activeProvider,
+            currentEndpoint = currentSource,
+            endpoints = streamingSources.value?.sources.orEmpty(),
+            errorType = errorType,
+            attempts = providerAttempts
+        )
+
+        when (decision) {
+            is FailoverDecision.PlayEndpoint -> {
+                val endpoint = decision.endpoint
+                android.util.Log.d("PlayerViewModel", "Failover switching to alternate server: ${endpoint.server.value}")
+                selectedServer.value = endpoint.server.value
+                selectedAudioType.value = endpoint.audioType
+                selectedSource.value = endpoint
+                updateAvailableHeightsFromStaticSources(
+                    streamingSources.value?.sources.orEmpty(),
+                    endpoint.server.value,
+                    endpoint.audioType
+                )
+                currentPosition.value = decision.checkpoint.positionMs
+            }
+            is FailoverDecision.ReResolve -> {
+                android.util.Log.d("PlayerViewModel", "Failover triggering re-resolve on provider: ${decision.nextProvider}")
+                activeProvider = decision.nextProvider
+                reResolveSources(decision.checkpoint.positionMs)
+            }
+            is FailoverDecision.PlaybackFailed -> {
+                errorMessage.value = "Playback failed: Native playback is currently unavailable."
+                hasError.value = true
+            }
+        }
+    }
+
+    private fun handleInitialResolutionFailure(errorType: PlaybackErrorType, message: String) {
+        val currentAnime = anime.value ?: run {
+            errorMessage.value = message
+            hasError.value = true
+            return
+        }
+        val eps = episodeList.value
+        val index = currentEpisodeIndex.value
+        if (index !in eps.indices) {
+            errorMessage.value = message
+            hasError.value = true
+            return
+        }
+        val ep = eps[index]
+
+        // Record provider attempt
+        val currentAttempts = providerAttempts.getOrDefault(activeProvider, 0)
+        providerAttempts[activeProvider] = currentAttempts + 1
+
+        val checkpoint = PlaybackCheckpoint(
+            identity = AnimeIdentity(
+                anilistId = currentAnime.id,
+                title = currentAnime.title,
+                englishTitle = currentAnime.englishTitle,
+                seasonYear = currentAnime.seasonYear,
+                format = if (currentAnime.episodes == 1) "MOVIE" else "TV"
+            ),
+            episodeNumber = ep.number,
+            audioType = selectedAudioType.value,
+            qualityPolicy = selectedQualityPolicy.value,
+            subtitlePreference = selectedSubtitle.value,
+            positionMs = 0L,
+            speed = playbackSpeed.value,
+            generationId = generationId
+        )
+
+        val decision = failoverController.determineFailover(
+            checkpoint = checkpoint,
+            currentProvider = activeProvider,
+            currentEndpoint = null,
+            endpoints = emptyList(),
+            errorType = errorType,
+            attempts = providerAttempts
+        )
+
+        when (decision) {
+            is FailoverDecision.PlayEndpoint -> {
+                val endpoint = decision.endpoint
+                selectedServer.value = endpoint.server.value
+                selectedAudioType.value = endpoint.audioType
+                selectedSource.value = endpoint
+                updateAvailableHeightsFromStaticSources(
+                    emptyList(),
+                    endpoint.server.value,
+                    endpoint.audioType
+                )
+                currentPosition.value = decision.checkpoint.positionMs
+            }
+            is FailoverDecision.ReResolve -> {
+                android.util.Log.d("PlayerViewModel", "Initial resolution failed; failover triggering re-resolve on provider: ${decision.nextProvider}")
+                activeProvider = decision.nextProvider
+                reResolveSources(decision.checkpoint.positionMs)
+            }
+            is FailoverDecision.PlaybackFailed -> {
+                errorMessage.value = message
+                hasError.value = true
+            }
+        }
+    }
+
+    fun selectProviderManual(providerId: ProviderId, currentPositionMs: Long) {
+        if (loadingProvider.value == providerId) return
+        if (providerId == activeProvider) return
+
+        if (!ProviderRegistry.isProviderEnabled(providerId)) {
+            errorMessage.value = "Failed to switch provider: Provider is unconfigured."
+            hasError.value = true
+            return
+        }
+        if (!ProviderRegistry.getCircuitBreaker(providerId).canExecute()) {
+            errorMessage.value = "Failed to switch provider: Provider is in cooldown."
+            hasError.value = true
             return
         }
 
-        val isDecoderError = error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-                error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED
+        val currentAnime = anime.value ?: return
+        val eps = episodeList.value
+        val index = currentEpisodeIndex.value
+        if (index !in eps.indices) return
+        val ep = eps[index]
 
-        if (isDecoderError) {
-            val heights = availableHeightsForCurrentEndpoint.value
-            val currentHeight = when (val policy = currentSource.qualityPolicy) {
-                is QualityPolicy.FixedHeight -> policy.height
-                else -> observedHeight.value ?: 1080
+        val fallbackSource = selectedSource.value
+        val fallbackSources = streamingSources.value
+
+        generationId++
+        val currentGen = generationId
+        loadingProvider.value = providerId
+        updateProviderStatuses()
+
+        resolutionJob?.cancel()
+        resolutionJob = viewModelScope.launch {
+            isLoading.value = true
+            hasError.value = false
+            try {
+                val request = EpisodeRequest(
+                    provider = providerId,
+                    seriesSlug = currentAnime.title,
+                    episodeId = ep.id,
+                    animeId = currentAnime.id,
+                    episodeNumber = ep.number,
+                    audioType = selectedAudioType.value
+                )
+                val result = repository.getStreamingSources(request)
+                if (currentGen != generationId) return@launch
+
+                when (result) {
+                    is PlaybackResult.NativeSources -> {
+                        if (result.sources.isEmpty()) {
+                            throw Exception("No native streams returned.")
+                        }
+
+                        val response = EpisodeSourcesResponse(
+                            sources = result.sources,
+                            subtitles = result.subtitles
+                        )
+                        streamingSources.value = response
+                        
+                        val allSources = result.sources
+                        val targetAudio = selectedAudioType.value
+                        var langSources = allSources.filter { it.audioType == targetAudio }
+                        if (langSources.isEmpty()) {
+                            val fallbackAudio = if (targetAudio == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                            langSources = allSources.filter { it.audioType == fallbackAudio }
+                            selectedAudioType.value = fallbackAudio
+                        }
+
+                        val chosenSource = langSources.firstOrNull()
+                        if (chosenSource != null) {
+                            val targetServer = chosenSource.server.value
+                            selectedServer.value = targetServer
+                            
+                            val initialSource = resolveSourceInternal(allSources, targetServer, selectedAudioType.value, selectedVideoQuality.value)
+                            selectedSource.value = initialSource
+                            updateAvailableHeightsFromStaticSources(allSources, targetServer, selectedAudioType.value)
+                            currentPosition.value = currentPositionMs
+                        } else {
+                            throw Exception("No matching streams found.")
+                        }
+                    }
+                    is PlaybackResult.EmbedOnly -> {
+                        throw Exception("Provider only offers non-native embed playback.")
+                    }
+                    is PlaybackResult.TemporarilyUnavailable -> {
+                        throw Exception("Provider is temporarily unavailable.")
+                    }
+                    is PlaybackResult.NotFound -> {
+                        throw Exception("Provider series or episode not found.")
+                    }
+                    is PlaybackResult.RateLimited -> {
+                        throw Exception("Rate limited by provider.")
+                    }
+                    is PlaybackResult.ContractChanged -> {
+                        throw Exception("Provider API contract changed.")
+                    }
+                    is PlaybackResult.IdentityMismatch -> {
+                        mismatchedProviders.add(providerId)
+                        throw Exception("Identity mismatch: Title did not match canonical records.")
+                    }
+                    is PlaybackResult.Error -> {
+                        if (result.errorType == PlaybackErrorType.IdentityMismatch) {
+                            mismatchedProviders.add(providerId)
+                        }
+                        throw Exception(result.message)
+                    }
+                }
+            } catch (e: Exception) {
+                if (currentGen == generationId) {
+                    e.printStackTrace()
+                    errorMessage.value = "Failed to switch provider: ${e.message ?: "Unknown error"}"
+                    hasError.value = true
+                    selectedSource.value = fallbackSource
+                    streamingSources.value = fallbackSources
+                }
+            } finally {
+                if (currentGen == generationId) {
+                    isLoading.value = false
+                    loadingProvider.value = null
+                    updateProviderStatuses()
+                }
             }
-            val lowerHeights = heights.filter { it < currentHeight }
-            if (lowerHeights.isNotEmpty()) {
-                val nextHeight = lowerHeights.first()
-                android.util.Log.d("PlayerViewModel", "Decoder error: switching to $nextHeight")
-                selectQualityByResolution(nextHeight.toString())
-                return
-            }
-        }
-
-        // Failover
-        val allSources = streamingSources.value?.sources.orEmpty()
-        val nextSource = allSources.firstOrNull { src ->
-            !isEndpointCooldown(src.id) && src.audioType == selectedAudioType.value && src.server.value != selectedServer.value
-        } ?: allSources.firstOrNull { src ->
-            !isEndpointCooldown(src.id) && src.audioType != selectedAudioType.value
-        } ?: allSources.firstOrNull { src ->
-            !isEndpointCooldown(src.id)
-        } ?: allSources.firstOrNull { src ->
-            src.id != currentSource.id
-        }
-
-        if (nextSource != null) {
-            android.util.Log.d("PlayerViewModel", "Failover switching to ${nextSource.server.value}")
-            selectedServer.value = nextSource.server.value
-            selectedAudioType.value = nextSource.audioType
-            selectedSource.value = nextSource
-            updateAvailableHeightsFromStaticSources(allSources, nextSource.server.value, nextSource.audioType)
-        } else {
-            errorMessage.value = "Playback failed: ${error.localizedMessage ?: "All servers cooled down."}"
-            hasError.value = true
         }
     }
 
@@ -408,8 +702,8 @@ class PlayerViewModel(
         val serverSources = sources.filter { it.server.value == server && it.audioType == audioType }
         val hasAdaptive = serverSources.any { it.qualityPolicy is QualityPolicy.Auto }
         if (hasAdaptive) {
-            // Also add HLS heights if parsed at provider level
-            val hlsHeights = serverSources.flatMap { it.hlsHeights }.distinct().sortedDescending()
+            // Also add HLS heights if parsed at provider level, filtered to 360..1080
+            val hlsHeights = serverSources.flatMap { it.hlsHeights }.distinct().filter { it in 360..1080 }.sortedDescending()
             if (hlsHeights.isNotEmpty()) {
                 availableHeightsForCurrentEndpoint.value = hlsHeights
             } else {
@@ -421,7 +715,7 @@ class PlayerViewModel(
                     is QualityPolicy.FixedHeight -> q.height
                     else -> null
                 }
-            }.distinct().sortedDescending()
+            }.distinct().filter { it in 360..1080 }.sortedDescending()
             availableHeightsForCurrentEndpoint.value = heights
         }
     }

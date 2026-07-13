@@ -59,8 +59,6 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer(
-                            scaleX = appScale,
-                            scaleY = appScale,
                             alpha = appAlpha
                         )
                 ) {

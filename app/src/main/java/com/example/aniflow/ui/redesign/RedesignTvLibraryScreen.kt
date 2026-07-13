@@ -21,35 +21,33 @@ fun RedesignTvLibraryScreen(
     watchlist: List<Anime>,
     onAnimeClick: (Anime) -> Unit
 ) {
-    AmbientBackground {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 24.dp)
-        ) {
-            Text(
-                text = "My Watchlist",
-                color = TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
-            )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp, vertical = 24.dp)
+    ) {
+        Text(
+            text = "My Watchlist",
+            color = TextPrimary,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold
+        )
 
-            Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(20.dp))
 
-            if (watchlist.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text("Your watchlist is empty. Bookmark anime to see them here!", color = GlassTokens.TextMuted)
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(140.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    items(watchlist) { anime ->
-                        RedesignTvPosterCard(anime = anime, onClick = { onAnimeClick(anime) })
-                    }
+        if (watchlist.isEmpty()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Your watchlist is empty. Bookmark anime to see them here!", color = GlassTokens.TextMuted)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(140.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(watchlist) { anime ->
+                    RedesignTvPosterCard(anime = anime, onClick = { onAnimeClick(anime) })
                 }
             }
         }

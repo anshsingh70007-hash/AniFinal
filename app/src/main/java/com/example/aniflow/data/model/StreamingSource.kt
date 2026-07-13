@@ -3,6 +3,7 @@ package com.example.aniflow.data.model
 import kotlin.jvm.JvmInline
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import com.example.aniflow.data.MappingEvidence
 
 @Serializable
 enum class AudioType {
@@ -13,6 +14,14 @@ enum class AudioType {
 enum class ProviderId {
     ANILIGHT, ANIKOTO, MIRURO
 }
+
+@JvmInline
+@Serializable
+value class ProviderSeriesId(val value: String)
+
+@JvmInline
+@Serializable
+value class ProviderEpisodeId(val value: String)
 
 @JvmInline
 @Serializable
@@ -52,7 +61,8 @@ data class SourceEndpoint(
     val declaredResolution: Int? = null,
     val episodeId: String,
     val role: String? = null,
-    val hlsHeights: List<Int> = emptyList()
+    val hlsHeights: List<Int> = emptyList(),
+    val expiryTimeMs: Long? = null
 ) {
     val isM3U8: Boolean get() = streamType == StreamType.HLS
 }
@@ -100,47 +110,116 @@ enum class PlaybackErrorType {
     Network,
     ProviderChanged,
     RateLimited,
-    InvalidatedMapping
+    InvalidatedMapping,
+    TemporarilyUnavailable,
+    ContractChanged,
+    IdentityMismatch
+}
+
+sealed interface ProviderStatus {
+    object Selected : ProviderStatus
+    object Loading : ProviderStatus
+    object Available : ProviderStatus
+    object CircuitOpen : ProviderStatus
+    object Unconfigured : ProviderStatus
+    object IdentityMismatch : ProviderStatus
 }
 
 @Serializable
-sealed class ProviderPlaybackResult {
+sealed interface PlaybackResult {
     @Serializable
-    @SerialName("success")
-    data class Success(val response: EpisodeSourcesResponse) : ProviderPlaybackResult()
+    @SerialName("native_sources")
+    data class NativeSources(
+        val provider: ProviderId,
+        val sources: List<SourceEndpoint>,
+        val subtitles: List<SubtitleTrack> = emptyList()
+    ) : PlaybackResult
 
     @Serializable
-    @SerialName("embed")
-    data class EmbedOnly(val embedUrl: String) : ProviderPlaybackResult()
+    @SerialName("embed_only")
+    data class EmbedOnly(
+        val provider: ProviderId,
+        val embedUrl: String
+    ) : PlaybackResult
+
+    @Serializable
+    @SerialName("not_found")
+    data class NotFound(val provider: ProviderId) : PlaybackResult
+
+    @Serializable
+    @SerialName("rate_limited")
+    data class RateLimited(val provider: ProviderId, val retryAfterDurationMs: Long? = null) : PlaybackResult
+
+    @Serializable
+    @SerialName("temporarily_unavailable")
+    data class TemporarilyUnavailable(val provider: ProviderId) : PlaybackResult
+
+    @Serializable
+    @SerialName("contract_changed")
+    data class ContractChanged(val provider: ProviderId) : PlaybackResult
+
+    @Serializable
+    @SerialName("identity_mismatch")
+    data class IdentityMismatch(val provider: ProviderId) : PlaybackResult
 
     @Serializable
     @SerialName("error")
-    data class Error(val errorType: PlaybackErrorType, val message: String) : ProviderPlaybackResult()
+    data class Error(val provider: ProviderId, val errorType: PlaybackErrorType, val message: String) : PlaybackResult
 }
 
 @Serializable
-sealed class EpisodeLookupResult {
+sealed interface EpisodeLookupResult {
     @Serializable
     @SerialName("matched")
-    data class Matched(val provider: ProviderId, val slug: String, val episodes: List<Episode>) : EpisodeLookupResult()
+    data class Matched(val provider: ProviderId, val seriesId: ProviderSeriesId, val episodes: List<Episode>) : EpisodeLookupResult
 
     @Serializable
     @SerialName("ambiguous")
-    data class Ambiguous(val provider: ProviderId, val candidates: List<ProviderSearchResult>) : EpisodeLookupResult()
+    data class Ambiguous(val candidates: List<ProviderSearchResult>) : EpisodeLookupResult
 
     @Serializable
     @SerialName("notFound")
-    data object NotFound : EpisodeLookupResult()
+    data object NotFound : EpisodeLookupResult
 
     @Serializable
     @SerialName("error")
-    data class Error(val message: String) : EpisodeLookupResult()
+    data class Error(val message: String) : EpisodeLookupResult
+}
+
+@Serializable
+sealed interface SeriesMatchResult {
+    @Serializable
+    @SerialName("matched")
+    data class Matched(
+        val provider: ProviderId,
+        val seriesId: ProviderSeriesId,
+        val confidence: Double,
+        val evidence: MappingEvidence
+    ) : SeriesMatchResult
+    
+    @Serializable
+    @SerialName("ambiguous")
+    data class Ambiguous(val candidates: List<ProviderSearchResult>) : SeriesMatchResult
+    
+    @Serializable
+    @SerialName("notFound")
+    data object NotFound : SeriesMatchResult
 }
 
 @Serializable
 data class ProviderSearchResult(
+    val provider: ProviderId,
     val title: String,
     val slug: String,
     val posterUrl: String,
     val anilistId: Int? = null
+)
+
+@Serializable
+data class HlsVariant(
+    val url: String,
+    val height: Int?,
+    val bandwidth: Long?,
+    val codecs: String?,
+    val frameRate: Float?
 )

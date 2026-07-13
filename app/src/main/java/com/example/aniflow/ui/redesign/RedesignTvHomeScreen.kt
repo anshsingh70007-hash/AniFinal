@@ -53,12 +53,11 @@ fun RedesignTvHomeScreen(
     onAnimeClick: (Anime) -> Unit,
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
-    AmbientBackground {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(28.dp),
-            contentPadding = PaddingValues(vertical = 24.dp)
-        ) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
+        contentPadding = PaddingValues(vertical = 24.dp)
+    ) {
             // Spotlight Carousel
             if (trending.isNotEmpty()) {
                 item {
@@ -158,7 +157,6 @@ fun RedesignTvHomeScreen(
                 }
             }
         }
-    }
 }
 
 @Composable
@@ -334,54 +332,60 @@ fun RedesignTvPosterCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.width(140.dp)
+    Box(
+        modifier = Modifier
+            .width(140.dp)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusGlow(isFocused, RoundedCornerShape(12.dp))
+            .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+            .clickable { onClick() }
+            .focusable()
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.7f)
-                .onFocusChanged { isFocused = it.isFocused }
-                .focusGlow(isFocused, RoundedCornerShape(12.dp))
-                .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
-                .clickable { onClick() }
-                .focusable()
+        Column(
+            modifier = Modifier.padding(8.dp)
         ) {
-            AsyncImage(
-                model = anime.coverImage,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.7f)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                AsyncImage(
+                    model = anime.coverImage,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
 
-            anime.averageScore?.let { score ->
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                        .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "★ ${String.format("%.1f", score / 10.0)}",
-                        color = GlassTokens.GlowCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                anime.averageScore?.let { score ->
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                            .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "★ ${String.format("%.1f", score / 10.0)}",
+                            color = GlassTokens.GlowCyan,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = anime.title,
+                color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = anime.title,
-            color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
     }
 }
 
@@ -474,54 +478,60 @@ fun RedesignTvContinueWatchingCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.width(160.dp)
+    Box(
+        modifier = Modifier
+            .width(160.dp)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusGlow(isFocused, RoundedCornerShape(12.dp))
+            .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+            .clickable { onHistoryClick(entry) }
+            .focusable()
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .onFocusChanged { isFocused = it.isFocused }
-                .focusGlow(isFocused, RoundedCornerShape(12.dp))
-                .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
-                .clickable { onHistoryClick(entry) }
-                .focusable()
+        Column(
+            modifier = Modifier.padding(8.dp)
         ) {
-            AsyncImage(
-                model = entry.coverImage,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            val progressFraction = if (entry.durationMs > 0) entry.progressMs.toFloat() / entry.durationMs else 0f
-            LinearProgressIndicator(
-                progress = { progressFraction },
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(5.dp)
-                    .align(Alignment.BottomCenter),
-                color = GlassTokens.GlowCyan,
-                trackColor = Color.White.copy(alpha = 0.25f)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Column(modifier = Modifier.padding(horizontal = 4.dp)) {
-            Text(
-                entry.title,
-                color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "Ep ${entry.episodeNumber} • ${entry.episodeName}",
-                color = GlassTokens.TextMuted,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+                    .height(200.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                AsyncImage(
+                    model = entry.coverImage,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                val progressFraction = if (entry.durationMs > 0) entry.progressMs.toFloat() / entry.durationMs else 0f
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .align(Alignment.BottomCenter),
+                    color = GlassTokens.GlowCyan,
+                    trackColor = Color.White.copy(alpha = 0.25f)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+                Text(
+                    entry.title,
+                    color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Ep ${entry.episodeNumber} • ${entry.episodeName}",
+                    color = GlassTokens.TextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

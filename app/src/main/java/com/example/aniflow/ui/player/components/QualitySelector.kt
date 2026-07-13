@@ -41,7 +41,9 @@ fun QualitySelector(
         list.add(QualityOption("Auto", "auto", QualityPolicy.Auto))
         list.add(QualityOption("Best available", "max", QualityPolicy.MaxAvailable))
         availableHeights.forEach { height ->
-            list.add(QualityOption("${height}p", "${height}p", QualityPolicy.FixedHeight(height)))
+            if (height in 360..1080) {
+                list.add(QualityOption("${height}p", "${height}p", QualityPolicy.FixedHeight(height)))
+            }
         }
         list
     }

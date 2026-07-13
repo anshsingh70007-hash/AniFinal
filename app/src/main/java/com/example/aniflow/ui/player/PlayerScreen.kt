@@ -68,7 +68,7 @@ import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.player.components.QualitySelector
 import com.example.aniflow.ui.player.components.SubtitleSelector
 import com.example.aniflow.ui.player.components.SpeedSelector
-import com.example.aniflow.ui.player.components.AdvancedServerSelector
+import com.example.aniflow.ui.player.components.AdvancedServerProviderSelector
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -104,6 +104,7 @@ fun PlayerScreen(
     val selectedSubtitle by viewModel.selectedSubtitle.collectAsStateWithLifecycle()
     val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsStateWithLifecycle()
     val selectedQualityPolicy by viewModel.selectedQualityPolicy.collectAsStateWithLifecycle()
+    val providerStatuses by viewModel.providerStatuses.collectAsStateWithLifecycle()
 
     var showAdvancedServerSelector by remember { mutableStateOf(false) }
     var showQualitySelector by remember { mutableStateOf(false) }
@@ -135,14 +136,12 @@ fun PlayerScreen(
 
     val bandwidthMeter = remember {
         androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(context)
-            .setInitialBitrateEstimate(15_000_000L)
             .build()
     }
 
     val httpDataSourceFactory = remember {
         androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
-            .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(20000)
             .setReadTimeoutMs(20000)
             .setTransferListener(bandwidthMeter)
@@ -157,13 +156,22 @@ fun PlayerScreen(
     var activeEpisodeIndex by remember { mutableStateOf(currentEpisodeIndex) }
     var hasPlayStarted by remember { mutableStateOf(false) }
 
+    var activePlayerRef by remember { mutableStateOf<ExoPlayer?>(null) }
+
     val exoPlayer = remember(animeId) {
+        activePlayerRef?.let { oldPlayer ->
+            try {
+                oldPlayer.stop()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                50_000,
-                120_000,
-                10_000,
-                15_000
+                25_000,
+                60_000,
+                5_000,
+                10_000
             )
             .setBackBuffer(30_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -196,17 +204,20 @@ fun PlayerScreen(
             .setUsage(androidx.media3.common.C.USAGE_MEDIA)
             .build()
 
-        ExoPlayer.Builder(context, renderersFactory)
+        val newPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setBandwidthMeter(bandwidthMeter)
             .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(10000)
             .setSeekForwardIncrementMs(10000)
             .build()
+        activePlayerRef = newPlayer
+        newPlayer
     }
 
-    val currentEp = episodeList.getOrNull(currentEpisodeIndex)
+    val currentEpUpdated by rememberUpdatedState(episodeList.getOrNull(currentEpisodeIndex))
 
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
@@ -230,8 +241,9 @@ fun PlayerScreen(
                 if (!playing) {
                     val pos = exoPlayer.currentPosition
                     val dur = exoPlayer.duration
-                    if (pos > 0 && dur > 0 && currentEp != null) {
-                        viewModel.saveProgress(animeId, pos, dur, currentEp)
+                    val ep = currentEpUpdated
+                    if (pos > 0 && dur > 0 && ep != null) {
+                        viewModel.saveProgress(animeId, pos, dur, ep)
                     }
                 }
             }
@@ -271,10 +283,14 @@ fun PlayerScreen(
             exoPlayer.removeListener(listener)
             val pos = exoPlayer.currentPosition
             val dur = exoPlayer.duration
-            if (pos > 0 && dur > 0 && currentEp != null) {
-                viewModel.saveProgress(animeId, pos, dur, currentEp)
+            val ep = currentEpUpdated
+            if (pos > 0 && dur > 0 && ep != null) {
+                viewModel.saveProgress(animeId, pos, dur, ep)
             }
             exoPlayer.release()
+            if (activePlayerRef == exoPlayer) {
+                activePlayerRef = null
+            }
         }
     }
 
@@ -320,8 +336,11 @@ fun PlayerScreen(
             val subtitleConfigs = subtitles.map { sub ->
                 MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.url))
                     .setMimeType(
-                        if (sub.url.contains(".ass", ignoreCase = true)) MimeTypes.TEXT_SSA
-                        else MimeTypes.TEXT_VTT
+                        when {
+                            sub.url.contains(".ass", ignoreCase = true) -> MimeTypes.TEXT_SSA
+                            sub.url.contains(".srt", ignoreCase = true) -> MimeTypes.APPLICATION_SUBRIP
+                            else -> MimeTypes.TEXT_VTT
+                        }
                     )
                     .setLanguage(sub.lang)
                     .setLabel(sub.label)
@@ -391,11 +410,15 @@ fun PlayerScreen(
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (now - lastSaveTime >= 15000L) {
                     lastSaveTime = now
-                    val currentEp = episodeList.getOrNull(currentEpisodeIndex)
-                    if (currentEp != null) {
-                        viewModel.saveProgress(animeId, pos, exoPlayer.duration, currentEp)
+                    val ep = viewModel.episodeList.value.getOrNull(viewModel.currentEpisodeIndex.value)
+                    if (ep != null) {
+                        viewModel.saveProgress(animeId, pos, exoPlayer.duration, ep)
                     }
                 }
+            } else if (exoPlayer.playbackState == Player.STATE_READY && controlsVisible) {
+                // Update position display while paused so seeks are reflected
+                viewModel.currentPosition.value = exoPlayer.currentPosition
+                viewModel.totalDuration.value = exoPlayer.duration
             }
         }
     }
@@ -448,6 +471,28 @@ fun PlayerScreen(
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.show(WindowInsetsCompat.Type.systemBars())
             }
+        }
+    }
+
+    // P-03: Pause-on-background lifecycle contract
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val currentEpForLifecycle by rememberUpdatedState(viewModel.episodeList.value.getOrNull(viewModel.currentEpisodeIndex.value))
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                // Checkpoint progress and pause
+                val pos = exoPlayer.currentPosition
+                val dur = exoPlayer.duration
+                val ep = currentEpForLifecycle
+                if (pos > 0 && dur > 0 && ep != null) {
+                    viewModel.saveProgress(animeId, pos, dur, ep)
+                }
+                exoPlayer.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -737,10 +782,17 @@ fun PlayerScreen(
                         val bottomBarModifier = if (isRedesign) {
                             Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = 24.dp, start = 24.dp, end = 24.dp)
+                                .padding(
+                                    bottom = if (deviceType == DeviceType.TV) 16.dp else 24.dp,
+                                    start = if (deviceType == DeviceType.TV) 48.dp else 24.dp,
+                                    end = if (deviceType == DeviceType.TV) 48.dp else 24.dp
+                                )
                                 .fillMaxWidth()
                                 .glassSurface(shape = RoundedCornerShape(16.dp))
-                                .padding(horizontal = 20.dp, vertical = 16.dp)
+                                .padding(
+                                    horizontal = 20.dp,
+                                    vertical = if (deviceType == DeviceType.TV) 10.dp else 16.dp
+                                )
                         } else {
                             Modifier
                                 .fillMaxWidth()
@@ -750,32 +802,34 @@ fun PlayerScreen(
                         Column(
                             modifier = bottomBarModifier
                         ) {
-                            ScopedProgressSlider(
-                                viewModel = viewModel,
-                                exoPlayer = exoPlayer,
-                                deviceType = deviceType,
-                                modifier = Modifier.fillMaxWidth().height(if (deviceType == DeviceType.TV) 8.dp else 16.dp)
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            
                             if (deviceType == DeviceType.TV) {
+                                // Put Slider and Time on the same Row to save vertical space
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ScopedProgressSlider(
+                                            viewModel = viewModel,
+                                            exoPlayer = exoPlayer,
+                                            deviceType = deviceType,
+                                            modifier = Modifier.fillMaxWidth().height(8.dp)
+                                        )
+                                    }
                                     ScopedProgressText(viewModel = viewModel)
                                 }
-                                Spacer(Modifier.height(12.dp))
                                 
-                                // Row 1: Primary Playback Keys
+                                Spacer(Modifier.height(10.dp))
+                                
+                                // Centered controls in a single compact row
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         TvPlayerControlItem(
@@ -804,21 +858,7 @@ fun PlayerScreen(
                                             isRedesign = isRedesign,
                                             onClick = { viewModel.playNextEpisode() }
                                         )
-                                    }
-                                }
-                                
-                                Spacer(Modifier.height(12.dp))
-                                
-                                // Row 2: Secondary Settings Keys
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                        
                                         val qualityLabel = when (val q = selectedQualityPolicy) {
                                             is QualityPolicy.Auto -> "Auto"
                                             is QualityPolicy.MaxAvailable -> "Best"
@@ -833,12 +873,7 @@ fun PlayerScreen(
                                                 onClick = { showQualitySelector = true }
                                             )
                                         }
-                                        val serverLabel = selectedSource?.let { "${it.server.value} (${it.audioType})" } ?: "Server"
-                                        TvPlayerControlItem(
-                                            text = serverLabel,
-                                            isRedesign = isRedesign,
-                                            onClick = { showAdvancedServerSelector = true }
-                                        )
+                                        
                                         TvPlayerControlItem(
                                             text = "Subtitles",
                                             isRedesign = isRedesign,
@@ -852,6 +887,13 @@ fun PlayerScreen(
                                     }
                                 }
                             } else {
+                                ScopedProgressSlider(
+                                    viewModel = viewModel,
+                                    exoPlayer = exoPlayer,
+                                    deviceType = deviceType,
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -875,8 +917,6 @@ fun PlayerScreen(
                                         if (showQualityButton) {
                                             PhonePlayerControlItem(text = qualityLabel, isRedesign = isRedesign, onClick = { showQualitySelector = true })
                                         }
-                                        val serverLabel = selectedSource?.let { "${it.server.value} (${it.audioType})" } ?: "Server"
-                                        PhonePlayerControlItem(text = serverLabel, isRedesign = isRedesign, onClick = { showAdvancedServerSelector = true })
                                         PhonePlayerControlItem(text = "Subtitles", isRedesign = isRedesign, onClick = { showSubtitleSelector = true })
                                         PhonePlayerControlItem(text = "Speed", isRedesign = isRedesign, onClick = { showSpeedSelector = true })
                                     }
@@ -890,10 +930,14 @@ fun PlayerScreen(
     }
 }
 
-    if (showAdvancedServerSelector && streamingSources != null) {
-        AdvancedServerSelector(
-            sources = streamingSources!!.sources,
+    if (showAdvancedServerSelector) {
+        AdvancedServerProviderSelector(
+            providerStatuses = providerStatuses,
+            sources = streamingSources?.sources ?: emptyList(),
             selectedSource = selectedSource,
+            onSelectProvider = { provider ->
+                viewModel.selectProviderManual(provider, exoPlayer.currentPosition)
+            },
             onSelectServer = { server, audioType -> viewModel.selectServerAndType(server, audioType) },
             onDismiss = { showAdvancedServerSelector = false }
         )
@@ -1026,11 +1070,24 @@ private fun ScopedProgressSlider(
             )
         }
     } else {
+        var isDragging by remember { mutableStateOf(false) }
+        var dragPosition by remember { mutableFloatStateOf(0f) }
+
+        val displayValue = if (isDragging) dragPosition else currentPosition.toFloat()
+
         Slider(
-            value = currentPosition.toFloat(),
+            value = displayValue,
             onValueChange = {
-                exoPlayer.seekTo(it.toLong())
+                isDragging = true
+                dragPosition = it
+                // Update displayed position immediately without seeking
                 viewModel.currentPosition.value = it.toLong()
+            },
+            onValueChangeFinished = {
+                // Single seek on finger-up
+                exoPlayer.seekTo(dragPosition.toLong())
+                viewModel.currentPosition.value = dragPosition.toLong()
+                isDragging = false
             },
             valueRange = 0f..(totalDuration.toFloat().coerceAtLeast(1f)),
             colors = SliderDefaults.colors(

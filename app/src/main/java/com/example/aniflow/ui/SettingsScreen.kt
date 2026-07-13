@@ -115,15 +115,11 @@ fun SettingsScreen(
 
         AdaptiveSettingsRow(
             title = "Theme Mode",
-            subtitle = "App visual style: ${themePref.uppercase()}",
+            subtitle = "App visual style: ${if (themePref == "amoled") "AMOLED" else "DARK"}",
             deviceType = deviceType,
             onClick = {
                 coroutineScope.launch {
-                    val next = when (themePref) {
-                        "system" -> "dark"
-                        "dark" -> "amoled"
-                        else -> "system"
-                    }
+                    val next = if (themePref == "amoled") "dark" else "amoled"
                     settingsStore.setThemeMode(next)
                 }
             }

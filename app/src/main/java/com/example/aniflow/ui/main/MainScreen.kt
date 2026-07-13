@@ -63,6 +63,7 @@ import com.example.aniflow.ui.tv.components.TvSideNavRail
 import com.example.aniflow.ui.tv.components.TvTopNavBar
 import com.example.aniflow.ui.redesign.*
 import com.example.aniflow.ui.redesign.theme.glassSurface
+import com.example.aniflow.ui.redesign.components.AmbientBackground
 
 @Composable
 fun MainScreen(
@@ -121,118 +122,128 @@ fun MainScreen(
             }
             Box(modifier = contentModifier.fillMaxSize()) {
                 if (deviceType == DeviceType.TV) {
-                Column(
-                    modifier = modifier
-                        .fillMaxSize()
-                        .background(PrimaryDark)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 40.dp, bottom = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        TvTopNavBar(
-                            selectedIndex = currentTab,
-                            items = listOf(
-                                Icons.Default.Home to "Home",
-                                Icons.Default.Search to "Browse",
-                                Icons.Default.Favorite to "Library",
-                                Icons.Default.Settings to "Settings"
-                            ),
-                            onSelect = { viewModel.setTab(it) }
-                        )
-                    }
+                    val tvContent = @Composable {
+                        Column(
+                            modifier = modifier.fillMaxSize()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 40.dp, bottom = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                TvTopNavBar(
+                                    selectedIndex = currentTab,
+                                    items = listOf(
+                                        Icons.Default.Home to "Home",
+                                        Icons.Default.Search to "Browse",
+                                        Icons.Default.Favorite to "Library",
+                                        Icons.Default.Settings to "Settings"
+                                    ),
+                                    onSelect = { viewModel.setTab(it) }
+                                )
+                            }
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(horizontal = 24.dp)
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryAccent)
-                        } else {
-                            if (isRedesign) {
-                                when (currentTab) {
-                                    0 -> RedesignTvHomeScreen(
-                                        trending = trending,
-                                        popular = popular,
-                                        seasonal = seasonal,
-                                        airing = airingToday,
-                                        topRated = topRated,
-                                        upcoming = upcoming,
-                                        recentlyUpdated = recentlyUpdated,
-                                        actionAnime = actionAnime,
-                                        romanceAnime = romanceAnime,
-                                        history = history,
-                                        onAnimeClick = { onItemClick(Detail(it.id)) },
-                                        onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
-                                    )
-                                    1 -> RedesignTvBrowseScreen(
-                                        query = searchQuery,
-                                        onQueryChange = { viewModel.onSearchQueryChanged(it) },
-                                        selectedGenre = selectedGenre,
-                                        onGenreSelect = { viewModel.onGenreSelected(it) },
-                                        results = searchResults,
-                                        hasNextPage = hasNextPage,
-                                        isSearchLoading = isSearchLoading,
-                                        onLoadMore = { viewModel.loadNextSearchPage() },
-                                        onAnimeClick = { onItemClick(Detail(it.id)) }
-                                    )
-                                    2 -> RedesignTvLibraryScreen(
-                                        watchlist = watchlist,
-                                        onAnimeClick = { onItemClick(Detail(it.id)) }
-                                    )
-                                    3 -> TvSettingsScreen(
-                                        watchlistStore = wStore,
-                                        watchHistoryStore = hStore,
-                                        settingsStore = sStore,
-                                        repository = repository
-                                    )
-                                }
-                            } else {
-                                when (currentTab) {
-                                    0 -> TvHomeScreen(
-                                        trending = trending,
-                                        popular = popular,
-                                        seasonal = seasonal,
-                                        airing = airingToday,
-                                        topRated = topRated,
-                                        upcoming = upcoming,
-                                        recentlyUpdated = recentlyUpdated,
-                                        actionAnime = actionAnime,
-                                        romanceAnime = romanceAnime,
-                                        history = history,
-                                        onAnimeClick = { onItemClick(Detail(it.id)) },
-                                        onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
-                                    )
-                                    1 -> TvBrowseScreen(
-                                        query = searchQuery,
-                                        onQueryChange = { viewModel.onSearchQueryChanged(it) },
-                                        selectedGenre = selectedGenre,
-                                        onGenreSelect = { viewModel.onGenreSelected(it) },
-                                        results = searchResults,
-                                        hasNextPage = hasNextPage,
-                                        isSearchLoading = isSearchLoading,
-                                        onLoadMore = { viewModel.loadNextSearchPage() },
-                                        onAnimeClick = { onItemClick(Detail(it.id)) }
-                                    )
-                                    2 -> TvLibraryScreen(
-                                        watchlist = watchlist,
-                                        onAnimeClick = { onItemClick(Detail(it.id)) }
-                                    )
-                                    3 -> TvSettingsScreen(
-                                        watchlistStore = wStore,
-                                        watchHistoryStore = hStore,
-                                        settingsStore = sStore,
-                                        repository = repository
-                                    )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .padding(horizontal = 24.dp)
+                            ) {
+                                if (isLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryAccent)
+                                } else {
+                                    if (isRedesign) {
+                                        when (currentTab) {
+                                            0 -> RedesignTvHomeScreen(
+                                                trending = trending,
+                                                popular = popular,
+                                                seasonal = seasonal,
+                                                airing = airingToday,
+                                                topRated = topRated,
+                                                upcoming = upcoming,
+                                                recentlyUpdated = recentlyUpdated,
+                                                actionAnime = actionAnime,
+                                                romanceAnime = romanceAnime,
+                                                history = history,
+                                                onAnimeClick = { onItemClick(Detail(it.id)) },
+                                                onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
+                                            )
+                                            1 -> RedesignTvBrowseScreen(
+                                                query = searchQuery,
+                                                onQueryChange = { viewModel.onSearchQueryChanged(it) },
+                                                selectedGenre = selectedGenre,
+                                                onGenreSelect = { viewModel.onGenreSelected(it) },
+                                                results = searchResults,
+                                                hasNextPage = hasNextPage,
+                                                isSearchLoading = isSearchLoading,
+                                                onLoadMore = { viewModel.loadNextSearchPage() },
+                                                onAnimeClick = { onItemClick(Detail(it.id)) }
+                                            )
+                                            2 -> RedesignTvLibraryScreen(
+                                                watchlist = watchlist,
+                                                onAnimeClick = { onItemClick(Detail(it.id)) }
+                                            )
+                                            3 -> TvSettingsScreen(
+                                                watchlistStore = wStore,
+                                                watchHistoryStore = hStore,
+                                                settingsStore = sStore,
+                                                repository = repository
+                                            )
+                                        }
+                                    } else {
+                                        when (currentTab) {
+                                            0 -> TvHomeScreen(
+                                                trending = trending,
+                                                popular = popular,
+                                                seasonal = seasonal,
+                                                airing = airingToday,
+                                                topRated = topRated,
+                                                upcoming = upcoming,
+                                                recentlyUpdated = recentlyUpdated,
+                                                actionAnime = actionAnime,
+                                                romanceAnime = romanceAnime,
+                                                history = history,
+                                                onAnimeClick = { onItemClick(Detail(it.id)) },
+                                                onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
+                                            )
+                                            1 -> TvBrowseScreen(
+                                                query = searchQuery,
+                                                onQueryChange = { viewModel.onSearchQueryChanged(it) },
+                                                selectedGenre = selectedGenre,
+                                                onGenreSelect = { viewModel.onGenreSelected(it) },
+                                                results = searchResults,
+                                                hasNextPage = hasNextPage,
+                                                isSearchLoading = isSearchLoading,
+                                                onLoadMore = { viewModel.loadNextSearchPage() },
+                                                onAnimeClick = { onItemClick(Detail(it.id)) }
+                                            )
+                                            2 -> TvLibraryScreen(
+                                                watchlist = watchlist,
+                                                onAnimeClick = { onItemClick(Detail(it.id)) }
+                                            )
+                                            3 -> TvSettingsScreen(
+                                                watchlistStore = wStore,
+                                                watchHistoryStore = hStore,
+                                                settingsStore = sStore,
+                                                repository = repository
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
+
+                    if (isRedesign) {
+                        AmbientBackground(modifier = modifier.fillMaxSize()) {
+                            tvContent()
+                        }
+                    } else {
+                        Box(modifier = modifier.fillMaxSize().background(PrimaryDark)) {
+                            tvContent()
+                        }
+                    }
             } else {
                 Scaffold(
                     bottomBar = {

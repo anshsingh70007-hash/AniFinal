@@ -1,8 +1,8 @@
 {
-  "versionCode": 44,
+  "versionCode": 48,
   "versionName": "1.8.3",
   "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.3-redesign.apk",
-  "updateNotes": "Complete redesign of the streaming source system: decoupled resolution and stream metadata, dot-boundary ad blocker, persistent provider title-matching, D-pad focus locking for TV dialog overlays, ExoPlayer failovers with exponential backoff, and re-resolution of signed URLs.",
+  "updateNotes": "Bug fixes & player controls layout fixes. Added resolution quality options inside player controls (360p-1080p), removed manual server selector for background auto-routing, and enforced dark theme mode exclusively.",
   "forceUpdate": false,
   "silentUpdate": false
 }

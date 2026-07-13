@@ -11,8 +11,9 @@ android {
         applicationId = "com.example.aniflow"
         minSdk = 24
         targetSdk = 36
-        versionCode = 44
+        versionCode = 48
         versionName = "1.8.3"
+        buildConfigField("String", "PROVIDER_BACKEND_URL", "\"\"")
     }
 
     flavorDimensions += "ui"
@@ -45,7 +46,7 @@ android {
     buildFeatures {
       compose = true
       aidl = false
-      buildConfig = false
+      buildConfig = true
       shaders = false
     }
 
@@ -88,6 +89,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation("io.ktor:ktor-client-mock:3.0.3")
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
@@ -108,7 +110,6 @@ dependencies {
   implementation(libs.media3.exoplayer)
   implementation(libs.media3.exoplayer.hls)
   implementation(libs.media3.ui)
-  implementation(libs.media3.session)
 
   // Ktor Client
   implementation(libs.ktor.client.core)

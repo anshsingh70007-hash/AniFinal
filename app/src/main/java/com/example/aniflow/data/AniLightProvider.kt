@@ -188,7 +188,7 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
         return bestScore
     }
 
-    override suspend fun findSeries(identity: AnimeIdentity): EpisodeLookupResult {
+    override suspend fun findSeries(identity: AnimeIdentity): SeriesMatchResult {
         val titlesToTry = mutableListOf<String>()
         identity.englishTitle?.let { titlesToTry.add(it) }
         titlesToTry.add(identity.title)
@@ -214,20 +214,29 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             allResults.addAll(jobs.awaitAll().flatten().distinctBy { it.slug })
         }
 
-        if (allResults.isEmpty()) return EpisodeLookupResult.NotFound
+        if (allResults.isEmpty()) return SeriesMatchResult.NotFound
 
         val scored = allResults.map { it to scoreCandidate(it, identity) }
             .sortedByDescending { it.second }
 
         val exactIdMatch = scored.find { it.second >= 10.0 }?.first
         if (exactIdMatch != null) {
-            val episodes = episodes(exactIdMatch.slug)
-            return EpisodeLookupResult.Matched(id, exactIdMatch.slug, episodes)
+            return SeriesMatchResult.Matched(
+                provider = id,
+                seriesId = ProviderSeriesId(exactIdMatch.slug),
+                confidence = 1.0,
+                evidence = MappingEvidence(
+                    providerTitle = exactIdMatch.title,
+                    anilistTitle = identity.title,
+                    matchedBy = "EXACT_ID",
+                    confidenceScore = 1.0
+                )
+            )
         }
 
         val (bestCandidate, bestScore) = scored.first()
         if (bestScore < 0.50) {
-            return EpisodeLookupResult.NotFound
+            return SeriesMatchResult.NotFound
         }
 
         // Apply strict confidence threshold & ambiguity margin
@@ -235,25 +244,39 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             val (secondCandidate, secondScore) = scored[1]
             if (bestScore < 0.85 || (bestScore - secondScore) < 0.15) {
                 val ambiguousCandidates = scored.filter { it.second >= 0.50 }.map { it.first }
-                return EpisodeLookupResult.Ambiguous(id, ambiguousCandidates)
+                return SeriesMatchResult.Ambiguous(ambiguousCandidates)
             }
         } else {
             if (bestScore < 0.85) {
-                return EpisodeLookupResult.Ambiguous(id, listOf(bestCandidate))
+                return SeriesMatchResult.Ambiguous(listOf(bestCandidate))
             }
         }
 
-        val episodes = episodes(bestCandidate.slug)
-        return EpisodeLookupResult.Matched(id, bestCandidate.slug, episodes)
+        return SeriesMatchResult.Matched(
+            provider = id,
+            seriesId = ProviderSeriesId(bestCandidate.slug),
+            confidence = bestScore,
+            evidence = MappingEvidence(
+                providerTitle = bestCandidate.title,
+                anilistTitle = identity.title,
+                matchedBy = "HIGH_CONFIDENCE_SCORE",
+                confidenceScore = bestScore
+            )
+        )
     }
 
-    override suspend fun episodes(slug: String): List<Episode> {
-        return getEpisodeList(slug)
+    override suspend fun getEpisodes(seriesId: ProviderSeriesId): EpisodeLookupResult {
+        val episodes = getEpisodeList(seriesId.value)
+        return if (episodes.isNotEmpty()) {
+            EpisodeLookupResult.Matched(id, seriesId, episodes)
+        } else {
+            EpisodeLookupResult.NotFound
+        }
     }
 
-    override suspend fun resolve(request: EpisodeRequest): ProviderPlaybackResult {
+    override suspend fun resolve(request: EpisodeRequest): PlaybackResult {
         val watchData = getWatchDataCached(request.seriesSlug)
-            ?: return ProviderPlaybackResult.Error(PlaybackErrorType.Network, "Failed to load watch details.")
+            ?: return PlaybackResult.Error(id, PlaybackErrorType.Network, "Failed to load watch details.")
 
         val servers = watchData.servers
         val targetAudio = request.audioType
@@ -267,7 +290,8 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
         }
 
         if (serversToTry.isEmpty()) {
-            return ProviderPlaybackResult.Error(
+            return PlaybackResult.Error(
+                id,
                 PlaybackErrorType.NoSources,
                 "No servers available for audio type ${targetAudio.name}"
             )
@@ -306,7 +330,8 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
         }
 
         if (resolvedEndpoints.isEmpty()) {
-            return ProviderPlaybackResult.Error(
+            return PlaybackResult.Error(
+                id,
                 PlaybackErrorType.NoSources,
                 "All resolved servers failed to return playable sources."
             )
@@ -318,35 +343,11 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
                 .thenBy { it.server.value }
         )
 
-        return ProviderPlaybackResult.Success(
-            EpisodeSourcesResponse(
-                sources = sorted,
-                subtitles = resolvedSubtitles.distinctBy { it.url }.toList()
-            )
+        return PlaybackResult.NativeSources(
+            provider = id,
+            sources = sorted,
+            subtitles = resolvedSubtitles.distinctBy { it.url }.toList()
         )
-    }
-
-    private suspend fun parseHlsMasterPlaylist(url: String, headers: Map<String, String>): List<Int> {
-        return try {
-            val response = client.get(url) {
-                headers.forEach { (k, v) -> header(k, v) }
-            }
-            if (response.status == HttpStatusCode.OK) {
-                val body = response.bodyAsText()
-                val heights = mutableListOf<Int>()
-                for (line in body.lineSequence()) {
-                    if (line.startsWith("#EXT-X-STREAM-INF")) {
-                        val match = Regex("RESOLUTION=\\d+x(\\d+)").find(line)
-                        match?.groupValues?.get(1)?.toIntOrNull()?.let {
-                            heights.add(it)
-                        }
-                    }
-                }
-                heights.distinct().sortedDescending()
-            } else emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
     }
 
     private suspend fun getWatchDataCached(slug: String): AniLightWatchResponse? {
@@ -387,6 +388,7 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
                     val title = item.title.english ?: item.title.romaji ?: item.title.native ?: "Unknown Title"
                     val poster = item.coverImage?.large ?: item.coverImage?.extraLarge ?: ""
                     ProviderSearchResult(
+                        provider = id,
                         title = title,
                         slug = item.slug,
                         posterUrl = poster,
@@ -519,9 +521,11 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
                         "User-Agent" to userAgent
                     )
 
-                    // Parse HLS master variants for adaptive streams at the provider layer
                     val hlsHeights = if (isHlsStream && policy is QualityPolicy.Auto) {
-                        parseHlsMasterPlaylist(finalUrl, headers)
+                        HlsManifestNormalizer.normalize(client, finalUrl, headers)
+                            .mapNotNull { it.height }
+                            .distinct()
+                            .sortedDescending()
                     } else {
                         emptyList()
                     }
