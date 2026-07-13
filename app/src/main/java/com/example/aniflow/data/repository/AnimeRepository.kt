@@ -21,8 +21,13 @@ interface AnimeRepository {
 
     // Detail
     fun getAnimeDetail(id: Int): Flow<Anime?>
-    suspend fun getEpisodes(animeId: Int, title: String): List<Episode>
-    suspend fun getStreamingSources(episodeId: String): EpisodeSourcesResponse
+    
+    // Updated repository contracts
+    suspend fun getEpisodes(identity: AnimeIdentity): EpisodeLookupResult
+    suspend fun getEpisodesBySlug(provider: ProviderId, slug: String): List<Episode>
+    suspend fun getStreamingSources(request: EpisodeRequest): ProviderPlaybackResult
+    
     suspend fun checkUpdates(): AppUpdateInfo?
     suspend fun refreshSchedule(): Pair<List<AiringAnime>, List<Anime>>
+    suspend fun checkUrlStatus(url: String, headers: Map<String, String>): Int
 }

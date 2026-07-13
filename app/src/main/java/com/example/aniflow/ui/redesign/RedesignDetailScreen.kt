@@ -38,6 +38,15 @@ import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.blur
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aniflow.data.ProviderMappingStore
+import com.example.aniflow.ui.detail.DetailUiState
+import com.example.aniflow.ui.detail.DetailViewModel
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+
 
 @Composable
 fun RedesignDetailScreen(
@@ -48,36 +57,58 @@ fun RedesignDetailScreen(
     onEpisodeClick: (Int) -> Unit,
     onBack: () -> Unit
 ) {
-    var anime by remember { mutableStateOf<Anime?>(null) }
-    var episodes by remember { mutableStateOf<List<Episode>>(emptyList()) }
-    val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
-    var isLoading by remember { mutableStateOf(true) }
-    val coroutineScope = rememberCoroutineScope()
-
-    var isBackFocused by remember { mutableStateOf(false) }
-
-    LaunchedEffect(animeId) {
-        val scope = this
-        isLoading = true
-        repository.getAnimeDetail(animeId).collect { detail ->
-            anime = detail
-            if (detail != null) {
-                scope.launch {
-                    episodes = repository.getEpisodes(detail.id, detail.title)
-                    isLoading = false
-                }
-            } else {
-                isLoading = false
-            }
-        }
+    val context = LocalContext.current
+    val viewModel: DetailViewModel = viewModel {
+        DetailViewModel(repository, ProviderMappingStore(context.applicationContext))
     }
 
-    if (isLoading) {
-        Box(modifier = Modifier.fillMaxSize().background(PrimaryDark), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = GlassTokens.GlowCyan)
+    LaunchedEffect(animeId) {
+        viewModel.loadAnimeDetails(animeId)
+    }
+
+    val uiState by viewModel.uiState.collectAsState()
+    val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
+    val coroutineScope = rememberCoroutineScope()
+    var isBackFocused by remember { mutableStateOf(false) }
+
+    when (val state = uiState) {
+        is DetailUiState.Loading -> {
+            Box(modifier = Modifier.fillMaxSize().background(PrimaryDark), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = GlassTokens.GlowCyan)
+            }
         }
-    } else {
-        anime?.let { currentAnime ->
+        is DetailUiState.Error -> {
+            Column(
+                modifier = Modifier.fillMaxSize().background(PrimaryDark),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = state.message, color = TextPrimary, fontSize = 16.sp)
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = { onBack() }, colors = ButtonDefaults.buttonColors(containerColor = SurfaceCard)) {
+                        Text("Back", color = TextPrimary)
+                    }
+                    Button(onClick = { viewModel.loadAnimeDetails(animeId) }, colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.GlowCyan)) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+        else -> {
+            val currentAnime = when (state) {
+                is DetailUiState.Success -> state.anime
+                is DetailUiState.Empty -> state.anime
+                is DetailUiState.Ambiguous -> state.anime
+                is DetailUiState.NotFound -> state.anime
+                else -> null
+            }
+            val episodes = when (state) {
+                is DetailUiState.Success -> state.episodes
+                else -> emptyList()
+            }
+
+            if (currentAnime != null) {
             val chunkSize = 100
             val episodeChunks = remember(episodes) {
                 if (episodes.isEmpty()) emptyList()
@@ -89,7 +120,12 @@ fun RedesignDetailScreen(
             }
 
             AmbientBackground {
-                Box(modifier = Modifier.fillMaxSize()) {
+                val isBlurry = state is DetailUiState.Ambiguous
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .let { if (isBlurry) it.blur(20.dp) else it }
+                ) {
                     // Panoramic Background Image with soft dark blur overlay
                     val bannerUrl = currentAnime.bannerImage
                     Box(
@@ -502,10 +538,28 @@ fun RedesignDetailScreen(
                             }
                         }
                     }
+                    if (isBlurry) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.85f))
+                                .clickable(enabled = true, onClick = {})
+                        )
+                        RedesignAmbiguousSelectionDialog(
+                            candidates = (state as DetailUiState.Ambiguous).candidates,
+                            onSelect = { candidate ->
+                                viewModel.confirmMapping(currentAnime, candidate)
+                            },
+                            onDismiss = {
+                                viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
+                            }
+                        )
+                    }
                 }
             }
         }
     }
+}
 }
 
 @Composable
@@ -640,3 +694,85 @@ fun RedesignEpisodeCard(
         }
     }
 }
+
+@Composable
+fun RedesignAmbiguousSelectionDialog(
+    candidates: List<com.example.aniflow.data.model.ProviderSearchResult>,
+    onSelect: (com.example.aniflow.data.model.ProviderSearchResult) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .width(420.dp)
+                .wrapContentHeight()
+                .padding(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF0F0E17).copy(alpha = 0.98f)
+            ),
+            shape = RoundedCornerShape(24.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Text(
+                    text = "Multiple Matches Found",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Please choose the correct title below:",
+                    color = GlassTokens.TextMuted,
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.heightIn(max = 300.dp)
+                ) {
+                    items(candidates) { candidate ->
+                        var isItemFocused by remember { mutableStateOf(false) }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { isItemFocused = it.isFocused }
+                                .focusGlow(isItemFocused, RoundedCornerShape(12.dp), focusedScale = 1.02f)
+                                .glassSurface(RoundedCornerShape(12.dp), isFocused = isItemFocused)
+                                .clickable { onSelect(candidate) }
+                                .focusable()
+                                .padding(16.dp)
+                        ) {
+                            Text(candidate.title, color = TextPrimary, fontSize = 14.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    var isCancelFocused by remember { mutableStateOf(false) }
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .onFocusChanged { isCancelFocused = it.isFocused }
+                            .focusable()
+                    ) {
+                        Text(
+                            "Cancel",
+                            color = if (isCancelFocused) GlassTokens.GlowCyan else GlassTokens.TextMuted,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+

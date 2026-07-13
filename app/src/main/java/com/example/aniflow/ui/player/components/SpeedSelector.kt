@@ -34,20 +34,19 @@ fun SpeedSelector(
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
     val deviceType = com.example.aniflow.LocalDeviceType.current
 
+    val cardColor = if (isRedesign) {
+        Color(0xFF0F0E17).copy(alpha = 0.98f)
+    } else {
+        SurfaceCard
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = if (isRedesign) {
-                Modifier
-                    .width(280.dp)
-                    .wrapContentHeight()
-                    .glassSurface(shape = RoundedCornerShape(16.dp))
-            } else {
-                Modifier
-                    .width(280.dp)
-                    .wrapContentHeight()
-            },
+            modifier = Modifier
+                .width(280.dp)
+                .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            color = if (isRedesign) Color.Transparent else SurfaceCard,
+            color = cardColor,
             tonalElevation = 8.dp
         ) {
             Column(
@@ -55,10 +54,17 @@ fun SpeedSelector(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Select Playback Speed",
+                    text = "Playback speed",
                     color = TextPrimary,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Applies until you leave the player",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal
                 )
                 Spacer(Modifier.height(16.dp))
                 LazyColumn(

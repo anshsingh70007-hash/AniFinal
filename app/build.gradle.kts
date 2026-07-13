@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.aniflow"
         minSdk = 24
         targetSdk = 36
-        versionCode = 43
-        versionName = "1.8.2"
+        versionCode = 44
+        versionName = "1.8.3"
     }
 
     flavorDimensions += "ui"
@@ -38,6 +38,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
     buildFeatures {
       compose = true

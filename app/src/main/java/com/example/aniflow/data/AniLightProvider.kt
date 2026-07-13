@@ -1,9 +1,6 @@
 package com.example.aniflow.data
 
-import com.example.aniflow.data.model.Episode
-import com.example.aniflow.data.model.EpisodeSourcesResponse
-import com.example.aniflow.data.model.StreamingSource
-import com.example.aniflow.data.model.SubtitleTrack
+import com.example.aniflow.data.model.*
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -11,16 +8,9 @@ import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.net.URLEncoder
-import java.util.regex.Pattern
 import kotlinx.coroutines.*
-
-@Serializable
-data class ProviderSearchResult(
-    val title: String,
-    val slug: String,
-    val posterUrl: String,
-    val anilistId: Int? = null
-)
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 @Serializable
 data class AniLightTitle(
@@ -95,10 +85,295 @@ data class AniLightTrack(
     val default: Boolean = false
 )
 
-class AniLightProvider(private val client: HttpClient) {
+class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
+    override val id: ProviderId = ProviderId.ANILIGHT
+    
     private val json = NetworkModule.json
     private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     private val baseUrl = "https://api.anilight.live/api"
+
+    private val KNOWN_SERVER_ORDER = listOf(
+        ServerId("light"),
+        ServerId("misa"),
+        ServerId("near"),
+        ServerId("raye"),
+        ServerId("rem"),
+        ServerId("ryu"),
+        ServerId("meg")
+    )
+
+    // Watch cache map: slug -> Pair(WatchResponse, entry time)
+    private val watchCache = mutableMapOf<String, Pair<AniLightWatchResponse, Long>>()
+    private val CACHE_TTL_MS = 300_000L // 5 minutes
+
+    private fun getProviderPriority(server: ServerId): Int {
+        val index = KNOWN_SERVER_ORDER.indexOf(server)
+        return if (index >= 0) {
+            KNOWN_SERVER_ORDER.size - index
+        } else {
+            0
+        }
+    }
+
+    private fun cleanTitleForSearch(title: String): String {
+        return title
+            .replace(Regex("(?i):.*"), "")
+            .replace(Regex("(?i)Season\\s*\\d+"), "")
+            .replace(Regex("(?i)Part\\s*\\d+"), "")
+            .replace(Regex("(?i)TV"), "")
+            .replace(Regex("(?i)Uncensored"), "")
+            .replace(Regex("(?i)Specials?"), "")
+            .trim()
+    }
+
+    private fun extractYear(title: String): Int? {
+        val match = Regex("\\b(19|20)\\d{2}\\b").find(title)
+        return match?.value?.toIntOrNull()
+    }
+
+    private fun extractSeasonNumber(title: String): Int? {
+        val lower = title.lowercase()
+        val match1 = Regex("season\\s*(\\d+)").find(lower)
+        if (match1 != null) return match1.groupValues[1].toIntOrNull()
+        val match2 = Regex("(\\d+)(st|nd|rd|th)\\s*season").find(lower)
+        if (match2 != null) return match2.groupValues[1].toIntOrNull()
+        val match3 = Regex("\\bs(\\d+)\\b").find(lower)
+        if (match3 != null) return match3.groupValues[1].toIntOrNull()
+        return null
+    }
+
+    private fun calculateSimilarity(titleA: String, titleB: String): Double {
+        val cleanA = titleA.lowercase().replace(Regex("[^a-z0-9 ]"), " ").split("\\s+".toRegex()).filter { it.isNotEmpty() }.toSet()
+        val cleanB = titleB.lowercase().replace(Regex("[^a-z0-9 ]"), " ").split("\\s+".toRegex()).filter { it.isNotEmpty() }.toSet()
+        if (cleanA.isEmpty() && cleanB.isEmpty()) return 1.0
+        if (cleanA.isEmpty() || cleanB.isEmpty()) return 0.0
+        val intersect = cleanA.intersect(cleanB)
+        return (2.0 * intersect.size) / (cleanA.size + cleanB.size)
+    }
+
+    private fun scoreCandidate(candidate: ProviderSearchResult, identity: AnimeIdentity): Double {
+        if (candidate.anilistId != null && candidate.anilistId == identity.anilistId) {
+            return 10.0 // Authoritative match
+        }
+
+        // Format validation
+        val lowerCandidate = candidate.title.lowercase()
+        val isMovieCandidate = lowerCandidate.contains("movie") || lowerCandidate.contains("film")
+        val isMovieIdentity = identity.format?.uppercase() == "MOVIE"
+        if (isMovieCandidate != isMovieIdentity) {
+            return 0.0 // Format mismatch
+        }
+
+        // Season validation
+        val identitySeason = extractSeasonNumber(identity.englishTitle ?: "") ?: extractSeasonNumber(identity.title)
+        val candidateSeason = extractSeasonNumber(candidate.title)
+        if (identitySeason != null && candidateSeason != null && identitySeason != candidateSeason) {
+            return 0.0 // Season mismatch
+        }
+
+        val romajiScore = calculateSimilarity(candidate.title, identity.title)
+        val englishScore = identity.englishTitle?.let { calculateSimilarity(candidate.title, it) } ?: 0.0
+        val nativeScore = identity.nativeTitle?.let { calculateSimilarity(candidate.title, it) } ?: 0.0
+
+        var bestScore = maxOf(romajiScore, englishScore, nativeScore)
+
+        // Year validation
+        val yearInCandidate = extractYear(candidate.title)
+        if (identity.seasonYear != null && yearInCandidate != null) {
+            if (identity.seasonYear != yearInCandidate) {
+                bestScore *= 0.5 // Penalty for mismatching year
+            }
+        }
+
+        return bestScore
+    }
+
+    override suspend fun findSeries(identity: AnimeIdentity): EpisodeLookupResult {
+        val titlesToTry = mutableListOf<String>()
+        identity.englishTitle?.let { titlesToTry.add(it) }
+        titlesToTry.add(identity.title)
+
+        val searchTitles = mutableListOf<String>()
+        for (t in titlesToTry) {
+            if (!searchTitles.contains(t) && t.isNotEmpty()) {
+                searchTitles.add(t)
+            }
+            val cleaned = cleanTitleForSearch(t)
+            if (cleaned.isNotEmpty() && !searchTitles.contains(cleaned)) {
+                searchTitles.add(cleaned)
+            }
+        }
+
+        val allResults = mutableListOf<ProviderSearchResult>()
+        coroutineScope {
+            val jobs = searchTitles.map { searchTitle ->
+                async {
+                    search(searchTitle)
+                }
+            }
+            allResults.addAll(jobs.awaitAll().flatten().distinctBy { it.slug })
+        }
+
+        if (allResults.isEmpty()) return EpisodeLookupResult.NotFound
+
+        val scored = allResults.map { it to scoreCandidate(it, identity) }
+            .sortedByDescending { it.second }
+
+        val exactIdMatch = scored.find { it.second >= 10.0 }?.first
+        if (exactIdMatch != null) {
+            val episodes = episodes(exactIdMatch.slug)
+            return EpisodeLookupResult.Matched(id, exactIdMatch.slug, episodes)
+        }
+
+        val (bestCandidate, bestScore) = scored.first()
+        if (bestScore < 0.50) {
+            return EpisodeLookupResult.NotFound
+        }
+
+        // Apply strict confidence threshold & ambiguity margin
+        if (scored.size > 1) {
+            val (secondCandidate, secondScore) = scored[1]
+            if (bestScore < 0.85 || (bestScore - secondScore) < 0.15) {
+                val ambiguousCandidates = scored.filter { it.second >= 0.50 }.map { it.first }
+                return EpisodeLookupResult.Ambiguous(id, ambiguousCandidates)
+            }
+        } else {
+            if (bestScore < 0.85) {
+                return EpisodeLookupResult.Ambiguous(id, listOf(bestCandidate))
+            }
+        }
+
+        val episodes = episodes(bestCandidate.slug)
+        return EpisodeLookupResult.Matched(id, bestCandidate.slug, episodes)
+    }
+
+    override suspend fun episodes(slug: String): List<Episode> {
+        return getEpisodeList(slug)
+    }
+
+    override suspend fun resolve(request: EpisodeRequest): ProviderPlaybackResult {
+        val watchData = getWatchDataCached(request.seriesSlug)
+            ?: return ProviderPlaybackResult.Error(PlaybackErrorType.Network, "Failed to load watch details.")
+
+        val servers = watchData.servers
+        val targetAudio = request.audioType
+
+        val serversToTry = if (targetAudio == AudioType.SUB) {
+            val defaultId = servers?.subProviders?.find { it.default }?.id
+            (listOfNotNull(defaultId) + (servers?.subProviders?.map { it.id } ?: emptyList())).distinct()
+        } else {
+            val defaultId = servers?.dubProviders?.find { it.default }?.id
+            (listOfNotNull(defaultId) + (servers?.dubProviders?.map { it.id } ?: emptyList())).distinct()
+        }
+
+        if (serversToTry.isEmpty()) {
+            return ProviderPlaybackResult.Error(
+                PlaybackErrorType.NoSources,
+                "No servers available for audio type ${targetAudio.name}"
+            )
+        }
+
+        val resolvedEndpoints = java.util.Collections.synchronizedList(mutableListOf<SourceEndpoint>())
+        val resolvedSubtitles = java.util.Collections.synchronizedList(mutableListOf<SubtitleTrack>())
+
+        val semaphore = Semaphore(4)
+
+        supervisorScope {
+            val jobs = serversToTry.map { provId ->
+                async {
+                    semaphore.withPermit {
+                        try {
+                            withTimeout(5000L) {
+                                val sourcesUrl = "$baseUrl/sources?id=${watchData.id}&epNum=${request.episodeNumber}&type=${targetAudio.name.lowercase()}&providerId=$provId"
+                                val response = client.get(sourcesUrl) {
+                                    header("User-Agent", userAgent)
+                                }
+                                if (response.status == HttpStatusCode.OK) {
+                                    val res = json.decodeFromString<AniLightSourcesResponse>(response.bodyAsText())
+                                    if (res.sources.isNotEmpty()) {
+                                        processSourcesResponse(res, targetAudio, provId, request.episodeId, resolvedEndpoints, resolvedSubtitles)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            android.util.Log.w("AniLightProvider", "Failed to resolve server $provId", e)
+                        }
+                    }
+                }
+            }
+            jobs.awaitAll()
+        }
+
+        if (resolvedEndpoints.isEmpty()) {
+            return ProviderPlaybackResult.Error(
+                PlaybackErrorType.NoSources,
+                "All resolved servers failed to return playable sources."
+            )
+        }
+
+        // Sort deterministically: priority descending, then alphabetical server ID
+        val sorted = resolvedEndpoints.sortedWith(
+            compareByDescending<SourceEndpoint> { it.priority }
+                .thenBy { it.server.value }
+        )
+
+        return ProviderPlaybackResult.Success(
+            EpisodeSourcesResponse(
+                sources = sorted,
+                subtitles = resolvedSubtitles.distinctBy { it.url }.toList()
+            )
+        )
+    }
+
+    private suspend fun parseHlsMasterPlaylist(url: String, headers: Map<String, String>): List<Int> {
+        return try {
+            val response = client.get(url) {
+                headers.forEach { (k, v) -> header(k, v) }
+            }
+            if (response.status == HttpStatusCode.OK) {
+                val body = response.bodyAsText()
+                val heights = mutableListOf<Int>()
+                for (line in body.lineSequence()) {
+                    if (line.startsWith("#EXT-X-STREAM-INF")) {
+                        val match = Regex("RESOLUTION=\\d+x(\\d+)").find(line)
+                        match?.groupValues?.get(1)?.toIntOrNull()?.let {
+                            heights.add(it)
+                        }
+                    }
+                }
+                heights.distinct().sortedDescending()
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private suspend fun getWatchDataCached(slug: String): AniLightWatchResponse? {
+        val now = System.currentTimeMillis()
+        synchronized(watchCache) {
+            val cached = watchCache[slug]
+            if (cached != null && now - cached.second < CACHE_TTL_MS) {
+                return cached.first
+            }
+        }
+
+        val response = retryWithBackoff(retries = 3) {
+            val res = client.get("$baseUrl/watch/$slug") {
+                header("User-Agent", userAgent)
+            }
+            if (res.status == HttpStatusCode.OK) {
+                json.decodeFromString<AniLightWatchResponse>(res.bodyAsText())
+            } else null
+        }
+
+        if (response != null) {
+            synchronized(watchCache) {
+                watchCache[slug] = Pair(response, System.currentTimeMillis())
+            }
+        }
+        return response
+    }
 
     suspend fun search(query: String): List<ProviderSearchResult> {
         return try {
@@ -129,14 +404,10 @@ class AniLightProvider(private val client: HttpClient) {
 
     suspend fun getEpisodeList(showId: String): List<Episode> {
         return try {
-            val response = client.get("$baseUrl/watch/$showId") {
-                header("User-Agent", userAgent)
-            }
-            if (response.status == HttpStatusCode.OK) {
-                val watchData = json.decodeFromString<AniLightWatchResponse>(response.bodyAsText())
+            val watchData = getWatchDataCached(showId)
+            if (watchData != null) {
                 val animeId = watchData.id ?: 0
                 watchData.episodes.map { ep ->
-                    // Construct a custom episode ID that carries slug, animeId, and epNum
                     val episodeId = "anilight:$showId|$animeId|${ep.number}"
                     Episode(
                         id = episodeId,
@@ -164,221 +435,115 @@ class AniLightProvider(private val client: HttpClient) {
             } catch (e: Exception) {
                 if (i == retries - 1) throw e
             }
-            kotlinx.coroutines.delay(currentDelay)
+            delay(currentDelay)
             currentDelay *= 2
         }
         return null
     }
 
-    suspend fun getStreamUrl(episodeId: String): EpisodeSourcesResponse {
-        if (!episodeId.startsWith("anilight:")) {
-            return EpisodeSourcesResponse(sources = emptyList())
-        }
-        
-        try {
-            val parts = episodeId.substringAfter("anilight:").split("|")
-            if (parts.size < 3) return EpisodeSourcesResponse(sources = emptyList())
-            val slug = parts[0]
-            val animeId = parts[1]
-            val epNum = parts[2].toIntOrNull() ?: 1
-            
-            // 1. Fetch servers list by hitting watch details
-            val servers = retryWithBackoff(retries = 3) {
-                val response = client.get("$baseUrl/watch/$slug") {
-                    header("User-Agent", userAgent)
-                }
-                if (response.status == HttpStatusCode.OK) {
-                    json.decodeFromString<AniLightWatchResponse>(response.bodyAsText()).servers
-                } else null
-            }
-            
-            // Default servers to try if fetch fails or servers is null
-            val subDefault = servers?.subProviders?.find { it.default }?.id
-            val subServers = (listOfNotNull(subDefault) + (servers?.subProviders?.map { it.id } ?: listOf("light", "misa", "near", "raye", "rem", "ryu", "meg"))).distinct()
-            
-            val dubDefault = servers?.dubProviders?.find { it.default }?.id
-            val dubServers = (listOfNotNull(dubDefault) + (servers?.dubProviders?.map { it.id } ?: listOf("light", "misa", "near", "raye", "ryu", "meg"))).distinct()
-            
-            val resolvedSources = java.util.Collections.synchronizedList(mutableListOf<StreamingSource>())
-            val resolvedSubtitles = java.util.Collections.synchronizedList(mutableListOf<SubtitleTrack>())
-            val customHeaders = java.util.Collections.synchronizedMap(mutableMapOf<String, String>())
-            
-            // Run sub and dub fetching in parallel
-            coroutineScope {
-                val subJob = launch {
-                    try {
-                        coroutineScope {
-                            subServers.map { provId ->
-                                launch {
-                                    try {
-                                        kotlinx.coroutines.withTimeoutOrNull(5000L) {
-                                            val sourcesUrl = "$baseUrl/sources?id=$animeId&epNum=$epNum&type=sub&providerId=$provId"
-                                            val res = retryWithBackoff(retries = 1, initialDelayMs = 300L) {
-                                                val sourcesResponse = client.get(sourcesUrl) {
-                                                    header("User-Agent", userAgent)
-                                                }
-                                                if (sourcesResponse.status == HttpStatusCode.OK) {
-                                                    json.decodeFromString<AniLightSourcesResponse>(sourcesResponse.bodyAsText())
-                                                } else null
-                                            }
-                                            if (res != null && res.sources.isNotEmpty()) {
-                                                processSourcesResponse(res, "sub", provId, resolvedSources, resolvedSubtitles, customHeaders)
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        android.util.Log.w("AniLightProvider", "Failed sub provider '$provId'", e)
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("AniLightProvider", "Error in sub provider fetching", e)
-                    }
-                }
-
-                val dubJob = launch {
-                    try {
-                        coroutineScope {
-                            dubServers.map { provId ->
-                                launch {
-                                    try {
-                                        kotlinx.coroutines.withTimeoutOrNull(5000L) {
-                                            val sourcesUrl = "$baseUrl/sources?id=$animeId&epNum=$epNum&type=dub&providerId=$provId"
-                                            val res = retryWithBackoff(retries = 1, initialDelayMs = 300L) {
-                                                val sourcesResponse = client.get(sourcesUrl) {
-                                                    header("User-Agent", userAgent)
-                                                }
-                                                if (sourcesResponse.status == HttpStatusCode.OK) {
-                                                    json.decodeFromString<AniLightSourcesResponse>(sourcesResponse.bodyAsText())
-                                                } else null
-                                            }
-                                            if (res != null && res.sources.isNotEmpty()) {
-                                                processSourcesResponse(res, "dub", provId, resolvedSources, resolvedSubtitles, customHeaders)
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        android.util.Log.w("AniLightProvider", "Failed dub provider '$provId'", e)
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("AniLightProvider", "Error in dub provider fetching", e)
-                    }
-                }
-
-                joinAll(subJob, dubJob)
-            }
-            
-            if (resolvedSources.isNotEmpty()) {
-                // Deduplicate: keep only ONE source per quality+type combo
-                // Collect other provider URLs as backupUrls
-                val deduped = resolvedSources
-                    .groupBy { it.quality }  // Groups like "1080p (SUB)", "720p (DUB)", etc.
-                    .map { (_, sourcesForQuality) ->
-                        val primary = sourcesForQuality.first()
-                        val backups = sourcesForQuality.drop(1).map { it.url }
-                        primary.copy(backupUrls = backups)
-                    }
-                
-                // Sort: SUB first, then by resolution descending
-                val qualityOrder = mapOf("1080p" to 4, "720p" to 3, "480p" to 2, "360p" to 1, "Auto" to 0)
-                val sorted = deduped.sortedWith(
-                    compareByDescending<StreamingSource> { src ->
-                        if (src.quality.contains("(SUB)")) 1 else 0
-                    }.thenByDescending { src ->
-                        qualityOrder.entries.firstOrNull { (k, _) -> src.quality.contains(k) }?.value ?: 0
-                    }
-                )
-                
-                return EpisodeSourcesResponse(
-                    sources = sorted,
-                    subtitles = resolvedSubtitles.distinctBy { it.url }.toList(),
-                    headers = customHeaders.toMap()
-                )
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("AniLightProvider", "GetStreamUrl failed for episodeId '$episodeId'", e)
-        }
-        
-        return EpisodeSourcesResponse(sources = emptyList())
-    }
-
-    private fun processSourcesResponse(
+    private suspend fun processSourcesResponse(
         res: AniLightSourcesResponse,
-        type: String,
+        audioType: AudioType,
         provId: String,
-        resolvedSources: MutableList<StreamingSource>,
-        resolvedSubtitles: MutableList<SubtitleTrack>,
-        customHeaders: MutableMap<String, String>
+        episodeId: String,
+        resolvedSources: MutableList<SourceEndpoint>,
+        resolvedSubtitles: MutableList<SubtitleTrack>
     ) {
-        synchronized(resolvedSources) {
-            // Map subtitles
-            res.tracks.forEach { track ->
-                val subtitleUrl = track.file ?: track.url ?: ""
-                if (subtitleUrl.isNotEmpty()) {
-                    val mappedSubUrl = mapSubtitlesUrl(subtitleUrl)
-                    val lang = track.lang ?: track.label ?: "English"
-                    val label = track.label ?: lang
-                    val exists = resolvedSubtitles.any { it.url == mappedSubUrl }
-                    if (!exists) {
+        // Map subtitles
+        res.tracks.forEach { track ->
+            val subtitleUrl = track.file ?: track.url ?: ""
+            if (subtitleUrl.isNotEmpty()) {
+                val mappedSubUrl = mapSubtitlesUrl(subtitleUrl)
+                val lang = track.lang ?: track.label ?: "English"
+                val label = track.label ?: lang
+                synchronized(resolvedSubtitles) {
+                    if (resolvedSubtitles.none { it.url == mappedSubUrl }) {
                         resolvedSubtitles.add(SubtitleTrack(url = mappedSubUrl, lang = lang, label = label))
                     }
                 }
             }
+        }
 
-            // Find first subtitle URL in this response to extract the CDN domain
-            val subTrackUrl = res.tracks.firstOrNull { (it.file ?: it.url ?: "").isNotEmpty() }?.let { it.file ?: it.url }
-                ?: resolvedSubtitles.firstOrNull()?.url
+        val subTrackUrl = res.tracks.firstOrNull { (it.file ?: it.url ?: "").isNotEmpty() }?.let { it.file ?: it.url }
 
-            // Map sources
-            res.sources.forEach { src ->
-                val urls = extractUrls(src.url)
-                val quality = src.quality ?: "Auto"
-                val isM3U8 = urls.any { it.contains(".m3u8") } || src.type == "hls"
+        // Map sources
+        for (src in res.sources) {
+            val urls = extractUrls(src.url)
+            val quality = src.quality ?: "Auto"
+            val isM3U8 = urls.any { it.contains(".m3u8") } || src.type == "hls"
 
-                urls.forEach { rawUrl ->
-                    val mappedUrls = if (rawUrl.contains("/cachesub/")) {
-                        val folder = rawUrl.substringAfter("/cachesub/").substringBefore("/")
-                        if (folder.isNotEmpty() && folder != rawUrl) {
-                            val rawHost = try { android.net.Uri.parse(rawUrl).host } catch (e: Exception) { null }
-                            val subHost = subTrackUrl?.let { try { android.net.Uri.parse(it).host } catch (e: Exception) { null } }
-                            val finalHost = rawHost ?: subHost ?: "ani10.nukitashi.top"
-                            listOf("https://$finalHost/$folder/index.m3u8")
-                        } else {
-                            decryptUrl(rawUrl, provId)
-                        }
+            for (rawUrl in urls) {
+                val mappedUrls = if (rawUrl.contains("/cachesub/")) {
+                    val folder = rawUrl.substringAfter("/cachesub/").substringBefore("/")
+                    if (folder.isNotEmpty() && folder != rawUrl) {
+                        val rawHost = try { android.net.Uri.parse(rawUrl).host } catch (e: Exception) { null }
+                        val subHost = subTrackUrl?.let { try { android.net.Uri.parse(it).host } catch (e: Exception) { null } }
+                        val finalHost = rawHost ?: subHost ?: "ani10.nukitashi.top"
+                        listOf("https://$finalHost/$folder/index.m3u8")
                     } else {
                         decryptUrl(rawUrl, provId)
                     }
-                    mappedUrls.forEach { finalUrl ->
-                        val referrer = "https://anilight.live"
-                        customHeaders["Referer"] = referrer
-                        customHeaders["Origin"] = referrer
+                } else {
+                    decryptUrl(rawUrl, provId)
+                }
+                for (finalUrl in mappedUrls) {
+                    val referrer = "https://anilight.live"
+                    
+                    val cleanResolution = when {
+                        quality.contains("1080") -> 1080
+                        quality.contains("720") -> 720
+                        quality.contains("480") -> 480
+                        quality.contains("360") -> 360
+                        else -> -1
+                    }
 
-                        val cleanResolution = when {
-                            quality.contains("1080") -> "1080p"
-                            quality.contains("720") -> "720p"
-                            quality.contains("480") -> "480p"
-                            quality.contains("360") -> "360p"
-                            else -> "Auto"
-                        }
+                    val policy = if (cleanResolution > 0) {
+                        QualityPolicy.FixedHeight(cleanResolution)
+                    } else if (quality.contains("Auto", ignoreCase = true) || quality.contains("Adaptive", ignoreCase = true)) {
+                        QualityPolicy.Auto
+                    } else {
+                        QualityPolicy.MaxAvailable
+                    }
 
-                        val isHlsStream = isM3U8 ||
-                            finalUrl.contains(".m3u8", ignoreCase = true) ||
-                            finalUrl.contains("index.txt", ignoreCase = true) ||
-                            src.type.equals("hls", ignoreCase = true)
+                    val isHlsStream = isM3U8 ||
+                        finalUrl.contains(".m3u8", ignoreCase = true) ||
+                        finalUrl.contains("index.txt", ignoreCase = true) ||
+                        src.type.equals("hls", ignoreCase = true)
 
+                    val streamType = if (isHlsStream) StreamType.HLS else StreamType.PROGRESSIVE
+                    val serverId = ServerId(provId.lowercase())
+
+                    val headers = mapOf(
+                        "Referer" to referrer,
+                        "Origin" to referrer,
+                        "User-Agent" to userAgent
+                    )
+
+                    // Parse HLS master variants for adaptive streams at the provider layer
+                    val hlsHeights = if (isHlsStream && policy is QualityPolicy.Auto) {
+                        parseHlsMasterPlaylist(finalUrl, headers)
+                    } else {
+                        emptyList()
+                    }
+
+                    // Deterministic composite key: provider/episodeId/server/audioType/role
+                    val endpointId = "${id.name}_${episodeId}_${serverId.value}_${audioType.name}".lowercase()
+
+                    synchronized(resolvedSources) {
                         resolvedSources.add(
-                            StreamingSource(
+                            SourceEndpoint(
+                                id = endpointId,
+                                provider = id,
+                                server = serverId,
+                                audioType = audioType,
+                                streamType = streamType,
                                 url = finalUrl,
-                                quality = "$cleanResolution - ${provId.uppercase()} (${type.uppercase()})",
-                                isM3U8 = isHlsStream,
-                                headers = mapOf(
-                                    "Referer" to referrer,
-                                    "Origin" to referrer,
-                                    "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                                )
+                                headers = headers,
+                                priority = getProviderPriority(serverId),
+                                qualityPolicy = policy,
+                                declaredResolution = if (cleanResolution > 0) cleanResolution else null,
+                                episodeId = episodeId,
+                                hlsHeights = hlsHeights
                             )
                         )
                     }
@@ -395,8 +560,6 @@ class AniLightProvider(private val client: HttpClient) {
         }
     }
 
-    // --- Dynamic URL Decryption and Mapping Routines matching anilight.live ---
-
     private fun decryptUrl(url: String, providerId: String): List<String> {
         if (providerId == "raye" && url.isNotEmpty()) {
             try {
@@ -406,7 +569,6 @@ class AniLightProvider(private val client: HttpClient) {
                 for (i in plaintext.indices) {
                     ciphertext[i] = (plaintext[i].toInt() xor key[i % key.size].toInt()).toByte()
                 }
-                // Base64-url safe encoding without padding
                 val b64 = android.util.Base64.encodeToString(ciphertext, android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE).trimEnd('=')
                 val m = "https://cdn.animex.su/stream/$b64/index.txt"
                 val finalUrl = "$baseUrl/lb/raye/proxy?url=${URLEncoder.encode(m, "UTF-8")}"
@@ -415,11 +577,11 @@ class AniLightProvider(private val client: HttpClient) {
                 android.util.Log.e("AniLightProvider", "Raye decryption failed", e)
             }
         }
-        
+
         if (providerId == "ryu" && url.isNotEmpty()) {
             return listOf("$baseUrl/proxy/ryu?url=${URLEncoder.encode(url, "UTF-8")}")
         }
-        
+
         return listOf(mapProxyUrl(url, providerId))
     }
 
@@ -427,7 +589,7 @@ class AniLightProvider(private val client: HttpClient) {
         if (url.startsWith("/lb/") || url.contains("/proxy")) {
             return if (url.startsWith("/")) "$baseUrl$url" else url
         }
-        
+
         val encoded = URLEncoder.encode(url, "UTF-8")
         return when (providerId) {
             "near" -> "$baseUrl/lb/near/proxy?url=$encoded"

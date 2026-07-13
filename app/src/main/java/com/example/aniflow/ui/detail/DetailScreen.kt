@@ -30,6 +30,12 @@ import com.example.aniflow.data.repository.AnimeRepository
 import com.example.aniflow.data.WatchlistStore
 import com.example.aniflow.theme.*
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aniflow.data.ProviderMappingStore
+import com.example.aniflow.data.model.EpisodeLookupResult
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 
 @Composable
 fun DetailScreen(
@@ -40,41 +46,63 @@ fun DetailScreen(
     onEpisodeClick: (Int) -> Unit,
     onBack: () -> Unit
 ) {
-    var anime by remember { mutableStateOf<Anime?>(null) }
-    var episodes by remember { mutableStateOf<List<Episode>>(emptyList()) }
-    val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
-    var isLoading by remember { mutableStateOf(true) }
-    val coroutineScope = rememberCoroutineScope()
-
-    var isBackFocused by remember { mutableStateOf(false) }
-
-    LaunchedEffect(animeId) {
-        val scope = this
-        isLoading = true
-        repository.getAnimeDetail(animeId).collect { detail ->
-            anime = detail
-            if (detail != null) {
-                scope.launch {
-                    episodes = repository.getEpisodes(detail.id, detail.title)
-                    isLoading = false
-                }
-            } else {
-                isLoading = false
-            }
-        }
+    val context = LocalContext.current
+    val viewModel: DetailViewModel = viewModel {
+        DetailViewModel(repository, ProviderMappingStore(context.applicationContext))
     }
 
-    if (isLoading) {
-        Box(modifier = Modifier.fillMaxSize().background(PrimaryDark), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = PrimaryAccent)
+    LaunchedEffect(animeId) {
+        viewModel.loadAnimeDetails(animeId)
+    }
+
+    val uiState by viewModel.uiState.collectAsState()
+    val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
+    val coroutineScope = rememberCoroutineScope()
+    var isBackFocused by remember { mutableStateOf(false) }
+
+    when (val state = uiState) {
+        is DetailUiState.Loading -> {
+            Box(modifier = Modifier.fillMaxSize().background(PrimaryDark), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = PrimaryAccent)
+            }
         }
-    } else {
-        anime?.let { currentAnime ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(PrimaryDark)
+        is DetailUiState.Error -> {
+            Column(
+                modifier = Modifier.fillMaxSize().background(PrimaryDark),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Text(text = state.message, color = TextPrimary, fontSize = 16.sp)
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = { onBack() }, colors = ButtonDefaults.buttonColors(containerColor = SurfaceCard)) {
+                        Text("Back", color = TextPrimary)
+                    }
+                    Button(onClick = { viewModel.loadAnimeDetails(animeId) }, colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent)) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+        else -> {
+            val currentAnime = when (state) {
+                is DetailUiState.Success -> state.anime
+                is DetailUiState.Empty -> state.anime
+                is DetailUiState.Ambiguous -> state.anime
+                is DetailUiState.NotFound -> state.anime
+                else -> null
+            }
+            val episodes = when (state) {
+                is DetailUiState.Success -> state.episodes
+                else -> emptyList()
+            }
+
+            if (currentAnime != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(PrimaryDark)
+                ) {
                 // Backdrop Image with vertical fading gradient
                 val bannerUrl = currentAnime.bannerImage
                 Box(
@@ -317,10 +345,22 @@ fun DetailScreen(
                     } else {
                         PhoneEpisodesList(episodes = episodes, onEpisodeClick = onEpisodeClick)
                     }
+                    if (state is DetailUiState.Ambiguous) {
+                        AmbiguousSelectionDialog(
+                            candidates = state.candidates,
+                            onSelect = { candidate ->
+                                viewModel.confirmMapping(currentAnime, candidate)
+                            },
+                            onDismiss = {
+                                viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
+                            }
+                        )
+                    }
                 }
             }
         }
     }
+}
 }
 
 @Composable
@@ -441,3 +481,40 @@ fun TvEpisodesGrid(
         }
     }
 }
+
+@Composable
+fun AmbiguousSelectionDialog(
+    candidates: List<com.example.aniflow.data.model.ProviderSearchResult>,
+    onSelect: (com.example.aniflow.data.model.ProviderSearchResult) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Correct Title Match", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(candidates) { candidate ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SurfaceCard)
+                            .clickable { onSelect(candidate) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(candidate.title, color = TextPrimary, fontSize = 14.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = PrimaryAccent)
+            }
+        },
+        containerColor = SurfaceCard,
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+

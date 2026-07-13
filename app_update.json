@@ -1,8 +1,8 @@
 {
-  "versionCode": 43,
-  "versionName": "1.8.2",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.2-redesign.apk",
-  "updateNotes": "Fixed episode listing matching for classic anime series (Neon Genesis Evangelion, Ghost in the Shell, etc.) and redesigned the mobile spotlight hero banner with a cinematic gradient, action buttons, and top-right indicator pill.",
+  "versionCode": 44,
+  "versionName": "1.8.3",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.3-redesign.apk",
+  "updateNotes": "Complete redesign of the streaming source system: decoupled resolution and stream metadata, dot-boundary ad blocker, persistent provider title-matching, D-pad focus locking for TV dialog overlays, ExoPlayer failovers with exponential backoff, and re-resolution of signed URLs.",
   "forceUpdate": false,
   "silentUpdate": false
 }

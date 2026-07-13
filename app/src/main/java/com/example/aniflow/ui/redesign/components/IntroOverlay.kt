@@ -95,12 +95,38 @@ fun IntroOverlay(
                     }
                 }
             }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.e("IntroOverlay", "Player error during intro playback", error)
+                introState = IntroState.FINISHED
+            }
         }
         player.addListener(listener)
 
         onDispose {
             player.removeListener(listener)
             player.release()
+        }
+    }
+
+    // Immediately transition to the second video once app is loaded
+    LaunchedEffect(isAppLoaded) {
+        if (isAppLoaded && introState == IntroState.FIRST_ANIMATION) {
+            if (player.currentMediaItemIndex == 0) {
+                player.seekTo(1, 0)
+                player.volume = 1f
+                introState = IntroState.SECOND_ANIMATION
+                player.play()
+            }
+        }
+    }
+
+    // Safeguard: absolute timeout of 5 seconds to bypass intro if app loading is slow
+    LaunchedEffect(Unit) {
+        delay(5000L)
+        if (!AppLoader.isLoaded.value) {
+            android.util.Log.w("IntroOverlay", "App load timed out, bypassing intro")
+            AppLoader.setLoaded(true)
         }
     }
 

@@ -1,8 +1,5 @@
 # AniFlow Custom Keep Rules
 
-# Keep Stormbreaker security module
--keep class com.example.aniflow.security.Stormbreaker { *; }
-
 # Keep all data models and network API deserialization entities
 -keep class com.example.aniflow.data.model.** { *; }
 -keep class com.example.aniflow.data.** { *; }

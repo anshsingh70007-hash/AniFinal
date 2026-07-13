@@ -11,6 +11,8 @@ import kotlinx.coroutines.sync.withLock
 import io.ktor.client.request.get
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.request.request
+import io.ktor.client.request.header
 
 class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     private val client = NetworkModule.client
@@ -250,134 +252,76 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         emit(detail ?: getFallbackAnimeList().find { it.id == id } ?: getFallbackAnimeList().first())
     }.flowOn(Dispatchers.IO)
 
-    private fun cleanTitleForSearch(title: String): String {
-        return title
-            .replace(Regex("(?i):.*"), "")
-            .replace(Regex("(?i)Season\\s*\\d+"), "")
-            .replace(Regex("(?i)Part\\s*\\d+"), "")
-            .replace(Regex("(?i)TV"), "")
-            .replace(Regex("(?i)Uncensored"), "")
-            .replace(Regex("(?i)Specials?"), "")
-            .trim()
-    }
+    private val providerMappingStore = ProviderMappingStore(context)
+    private val providers: Map<ProviderId, EpisodeProvider> = mapOf(
+        ProviderId.ANILIGHT to aniLightProvider,
+        ProviderId.ANIKOTO to AnikotoProvider(),
+        ProviderId.MIRURO to MiruroProvider()
+    )
 
-    override suspend fun getEpisodes(animeId: Int, title: String): List<Episode> {
-        val episodesList = mutableListOf<Episode>()
-
+    override suspend fun getEpisodes(identity: AnimeIdentity): EpisodeLookupResult {
         try {
-            // Fetch the details from AniList first to get all title versions (Romaji & English)
-            val detail = try { aniListApi.getAnimeDetail(animeId) } catch (e: Exception) { null }
-            val titlesToTry = mutableListOf<String>()
-            if (detail != null) {
-                // Try English first since it is often matched on AniLight, then Romaji (detail.title is romaji or english)
-                detail.englishTitle?.let { titlesToTry.add(it) }
-                if (detail.title != detail.englishTitle) {
-                    titlesToTry.add(detail.title)
-                }
-            } else {
-                titlesToTry.add(title)
-            }
-
-            val searchTitles = mutableListOf<String>()
-            for (t in titlesToTry) {
-                if (!searchTitles.contains(t) && t.isNotEmpty()) {
-                    searchTitles.add(t)
-                }
-                val cleaned = cleanTitleForSearch(t)
-                if (cleaned.isNotEmpty() && !searchTitles.contains(cleaned)) {
-                    searchTitles.add(cleaned)
+            val providerId = ProviderId.ANILIGHT
+            val provider = providers[providerId] ?: return EpisodeLookupResult.Error("Provider not found")
+            
+            // Check persistence mapping store
+            val mapping = providerMappingStore.getMapping(providerId, identity.anilistId)
+            if (mapping != null) {
+                val episodes = provider.episodes(mapping.slug)
+                if (episodes.isNotEmpty()) {
+                    return EpisodeLookupResult.Matched(providerId, mapping.slug, episodes)
+                } else {
+                    providerMappingStore.invalidateMapping(providerId, identity.anilistId)
                 }
             }
-
-            var searchResults = emptyList<ProviderSearchResult>()
-            var bestMatch: ProviderSearchResult? = null
-
-            for (searchTitle in searchTitles) {
-                val results = aniLightProvider.search(searchTitle)
-                if (results.isNotEmpty()) {
-                    val idMatch = results.find { it.anilistId == animeId }
-                    if (idMatch != null) {
-                        bestMatch = idMatch
-                        break
-                    }
-                    if (searchResults.isEmpty()) {
-                        searchResults = results
-                    }
-                }
+            
+            // Fallback to candidate search
+            val lookupResult = provider.findSeries(identity)
+            if (lookupResult is EpisodeLookupResult.Matched) {
+                val evidence = MappingEvidence(
+                    providerTitle = identity.title,
+                    anilistTitle = identity.englishTitle ?: identity.title,
+                    matchedBy = "HIGH_CONFIDENCE_SCORE",
+                    confidenceScore = 0.95
+                )
+                providerMappingStore.setMapping(
+                    ProviderMapping(
+                        provider = providerId,
+                        anilistId = identity.anilistId,
+                        slug = lookupResult.slug,
+                        evidence = evidence
+                    )
+                )
             }
-
-            if (bestMatch == null && searchResults.isNotEmpty()) {
-                bestMatch = searchResults.find { res ->
-                    titlesToTry.any { toTry -> res.title.equals(toTry, ignoreCase = true) }
-                } ?: searchResults.firstOrNull()
-            }
-
-            if (bestMatch != null) {
-                val list = aniLightProvider.getEpisodeList(bestMatch.slug)
-                episodesList.addAll(list)
-            }
+            return lookupResult
         } catch (e: Exception) {
             e.printStackTrace()
+            return EpisodeLookupResult.Error(e.localizedMessage ?: "Unknown error")
         }
-        
-        return episodesList
     }
 
-    override suspend fun getStreamingSources(episodeId: String): EpisodeSourcesResponse {
-        var response: EpisodeSourcesResponse? = null
-        if (episodeId.startsWith("anilight:")) {
-            try {
-                val sources = aniLightProvider.getStreamUrl(episodeId)
-                val filteredSources = sources.sources.filter { !AdBlocker.shouldBlock(it.url) }
-                if (filteredSources.isNotEmpty()) {
-                    val preferredLang = try { settingsStore.languagePreference.first() } catch (e: Exception) { "sub" }
-                    val preferredQuality = try { settingsStore.qualityPreference.first() } catch (e: Exception) { "auto" }
+    override suspend fun getEpisodesBySlug(provider: ProviderId, slug: String): List<Episode> {
+        val providerImpl = providers[provider] ?: return emptyList()
+        return try {
+            providerImpl.episodes(slug)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
-                    val sortedSources = filteredSources.sortedWith(compareByDescending<StreamingSource> { src ->
-                        val isPreferredLang = if (preferredLang.lowercase() == "dub") {
-                            src.quality.contains("(DUB)", ignoreCase = true)
-                        } else {
-                            src.quality.contains("(SUB)", ignoreCase = true)
-                        }
-                        if (isPreferredLang) 2 else 0
-                    }.thenByDescending { src ->
-                        if (preferredQuality != "auto") {
-                            if (src.quality.contains(preferredQuality, ignoreCase = true)) 1 else 0
-                        } else {
-                            if (src.quality.contains("1080p", ignoreCase = true)) 4
-                            else if (src.quality.contains("720p", ignoreCase = true)) 3
-                            else if (src.quality.contains("480p", ignoreCase = true)) 2
-                            else if (src.quality.contains("360p", ignoreCase = true)) 1
-                            else 0
-                        }
-                    })
-                    response = sources.copy(sources = sortedSources)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+    override suspend fun getStreamingSources(request: EpisodeRequest): ProviderPlaybackResult {
+        val providerImpl = providers[request.provider]
+            ?: return ProviderPlaybackResult.Error(PlaybackErrorType.NoProviderMatch, "Provider not found")
+        
+        val result = providerImpl.resolve(request)
+        if (result is ProviderPlaybackResult.Success) {
+            val filteredSources = result.response.sources.filter { !AdBlocker.shouldBlock(it.url) }
+            if (filteredSources.isEmpty()) {
+                return ProviderPlaybackResult.Error(PlaybackErrorType.NoSources, "No unblocked streaming sources found.")
             }
+            return ProviderPlaybackResult.Success(result.response.copy(sources = filteredSources))
         }
-
-        if (response != null) {
-            return response
-        }
-
-        return EpisodeSourcesResponse(
-            sources = listOf(
-                StreamingSource(
-                    url = "https://www.w3schools.com/html/mov_bbb.mp4",
-                    quality = "1080p (Fallback)",
-                    isM3U8 = false
-                )
-            ),
-            subtitles = listOf(
-                SubtitleTrack(
-                    url = "https://raw.githubusercontent.com/run-to-git/vtt-subtitles/main/english.vtt",
-                    lang = "en",
-                    label = "English"
-                )
-            )
-        )
+        return result
     }
 
     private fun getFallbackAnimeList(): List<Anime> {
@@ -495,5 +439,30 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         }
 
         Pair(airingTodayList, recentlyUpdatedList)
+    }
+
+    override suspend fun checkUrlStatus(url: String, headers: Map<String, String>): Int = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        try {
+            val response = client.request(url) {
+                method = io.ktor.http.HttpMethod.Head
+                headers.forEach { (k, v) ->
+                    header(k, v)
+                }
+            }
+            response.status.value
+        } catch (e: Exception) {
+            try {
+                val response = client.request(url) {
+                    method = io.ktor.http.HttpMethod.Get
+                    headers.forEach { (k, v) ->
+                        header(k, v)
+                    }
+                    header("Range", "bytes=0-0")
+                }
+                response.status.value
+            } catch (e2: Exception) {
+                0
+            }
+        }
     }
 }

@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -33,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
@@ -66,6 +68,7 @@ import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.player.components.QualitySelector
 import com.example.aniflow.ui.player.components.SubtitleSelector
 import com.example.aniflow.ui.player.components.SpeedSelector
+import com.example.aniflow.ui.player.components.AdvancedServerSelector
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -100,12 +103,24 @@ fun PlayerScreen(
     val selectedSource by viewModel.selectedSource.collectAsStateWithLifecycle()
     val selectedSubtitle by viewModel.selectedSubtitle.collectAsStateWithLifecycle()
     val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsStateWithLifecycle()
+    val selectedQualityPolicy by viewModel.selectedQualityPolicy.collectAsStateWithLifecycle()
 
-    var showServerSelector by remember { mutableStateOf(false) }
+    var showAdvancedServerSelector by remember { mutableStateOf(false) }
+    var showQualitySelector by remember { mutableStateOf(false) }
     var showSubtitleSelector by remember { mutableStateOf(false) }
     var showSpeedSelector by remember { mutableStateOf(false) }
+    val isOverlayVisible = showQualitySelector || showSubtitleSelector || showSpeedSelector || showAdvancedServerSelector
 
     var controlsVisible by remember { mutableStateOf(true) }
+    
+    BackHandler(enabled = true) {
+        if (controlsVisible) {
+            onBack()
+        } else {
+            controlsVisible = true
+        }
+    }
+    
     val focusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
 
@@ -211,6 +226,7 @@ fun PlayerScreen(
             }
             override fun onIsPlayingChanged(playing: Boolean) {
                 viewModel.isPlaying.value = playing
+                viewModel.onPlaybackStateChanged(playing)
                 if (!playing) {
                     val pos = exoPlayer.currentPosition
                     val dur = exoPlayer.duration
@@ -219,16 +235,35 @@ fun PlayerScreen(
                     }
                 }
             }
+            override fun onRenderedFirstFrame() {
+                viewModel.onFirstFrameRendered()
+            }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                if (!hasPlayStarted) {
-                    viewModel.handlePlaybackError(error.errorCodeName)
-                } else {
-                    viewModel.errorMessage.value = "Playback error: ${error.errorCodeName}. Tapped to retry."
-                    viewModel.hasError.value = true
-                }
+                viewModel.handlePlaybackError(error, exoPlayer.currentPosition)
             }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                applyVideoQualityOverride(exoPlayer, viewModel.selectedVideoQuality.value)
+                applyVideoQualityOverride(exoPlayer, viewModel.selectedQualityPolicy.value)
+                
+                val currentSource = viewModel.selectedSource.value
+                if (currentSource != null && currentSource.qualityPolicy is QualityPolicy.Auto) {
+                    val heights = mutableListOf<Int>()
+                    val videoType = androidx.media3.common.C.TRACK_TYPE_VIDEO
+                    for (groupInfo in tracks.groups) {
+                        if (groupInfo.type == videoType) {
+                            val group = groupInfo.mediaTrackGroup
+                            for (i in 0 until group.length) {
+                                val format = group.getFormat(i)
+                                if (format.height > 0) {
+                                    heights.add(format.height)
+                                }
+                            }
+                        }
+                    }
+                    val sortedHeights = heights.distinct().sortedDescending()
+                    if (sortedHeights.isNotEmpty()) {
+                        viewModel.availableHeightsForCurrentEndpoint.value = sortedHeights
+                    }
+                }
             }
         }
         exoPlayer.addListener(listener)
@@ -322,8 +357,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(selectedVideoQuality, exoPlayer) {
-        applyVideoQualityOverride(exoPlayer, selectedVideoQuality)
+    LaunchedEffect(selectedQualityPolicy, exoPlayer) {
+        applyVideoQualityOverride(exoPlayer, selectedQualityPolicy)
     }
 
     LaunchedEffect(selectedSubtitle, exoPlayer) {
@@ -424,8 +459,12 @@ fun PlayerScreen(
             .focusable()
             .onKeyEvent { event ->
                 if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    val keyCode = event.nativeKeyEvent.keyCode
+                    if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                        return@onKeyEvent false
+                    }
                     if (!controlsVisible) {
-                        when (event.nativeKeyEvent.keyCode) {
+                        when (keyCode) {
                             android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 controlsVisible = true
                                 exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
@@ -442,11 +481,6 @@ fun PlayerScreen(
                                 controlsVisible = true
                                 return@onKeyEvent true
                             }
-                        }
-                    } else {
-                        if (event.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
-                            controlsVisible = false
-                            return@onKeyEvent true
                         }
                     }
                 }
@@ -476,10 +510,10 @@ fun PlayerScreen(
                     }
                     if (streamingSources != null && streamingSources!!.sources.isNotEmpty()) {
                         Button(
-                            onClick = { showServerSelector = true },
+                            onClick = { showAdvancedServerSelector = true },
                             colors = ButtonDefaults.buttonColors(containerColor = SecondaryAccent)
                         ) {
-                            Text("Switch Quality")
+                            Text("Switch Server")
                         }
                     }
                 }
@@ -488,6 +522,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .focusProperties { canFocus = !isOverlayVisible }
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { controlsVisible = !controlsVisible },
@@ -761,11 +796,24 @@ fun PlayerScreen(
                                             isRedesign = isRedesign,
                                             onClick = { viewModel.playNextEpisode() }
                                         )
-                                        val qualityLabel = selectedSource?.quality ?: "Quality"
+                                        val qualityLabel = when (val q = selectedQualityPolicy) {
+                                            is QualityPolicy.Auto -> "Auto"
+                                            is QualityPolicy.MaxAvailable -> "Best"
+                                            is QualityPolicy.FixedHeight -> "${q.height}p"
+                                        }
+                                        val availableHeights by viewModel.availableHeightsForCurrentEndpoint.collectAsStateWithLifecycle()
+                                        val showQualityButton = availableHeights.size > 1
+                                        if (showQualityButton) {
+                                            TvPlayerControlItem(
+                                                text = qualityLabel,
+                                                isRedesign = isRedesign,
+                                                onClick = { showQualitySelector = true }
+                                            )
+                                        }
                                         TvPlayerControlItem(
-                                            text = qualityLabel,
+                                            text = selectedSource?.let { "${it.server} (${it.audioType})" } ?: "Server",
                                             isRedesign = isRedesign,
-                                            onClick = { showServerSelector = true }
+                                            onClick = { showAdvancedServerSelector = true }
                                         )
                                         TvPlayerControlItem(
                                             text = "Subtitles",
@@ -778,10 +826,19 @@ fun PlayerScreen(
                                             onClick = { showSpeedSelector = true }
                                         )
                                     } else {
-                                        val qualityLabel = selectedSource?.quality ?: "Quality"
+                                        val qualityLabel = when (val q = selectedQualityPolicy) {
+                                            is QualityPolicy.Auto -> "Auto"
+                                            is QualityPolicy.MaxAvailable -> "Best"
+                                            is QualityPolicy.FixedHeight -> "${q.height}p"
+                                        }
+                                        val availableHeights by viewModel.availableHeightsForCurrentEndpoint.collectAsStateWithLifecycle()
+                                        val showQualityButton = availableHeights.size > 1
                                         PhonePlayerControlItem(text = "-10s", isRedesign = isRedesign, onClick = { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)) })
                                         PhonePlayerControlItem(text = "+10s", isRedesign = isRedesign, onClick = { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration)) })
-                                        PhonePlayerControlItem(text = qualityLabel, isRedesign = isRedesign, onClick = { showServerSelector = true })
+                                        if (showQualityButton) {
+                                            PhonePlayerControlItem(text = qualityLabel, isRedesign = isRedesign, onClick = { showQualitySelector = true })
+                                        }
+                                        PhonePlayerControlItem(text = selectedSource?.let { "${it.server} (${it.audioType})" } ?: "Server", isRedesign = isRedesign, onClick = { showAdvancedServerSelector = true })
                                         PhonePlayerControlItem(text = "Subtitles", isRedesign = isRedesign, onClick = { showSubtitleSelector = true })
                                         PhonePlayerControlItem(text = "Speed", isRedesign = isRedesign, onClick = { showSpeedSelector = true })
                                     }
@@ -795,14 +852,22 @@ fun PlayerScreen(
     }
 }
 
-    if (showServerSelector && streamingSources != null) {
-        QualitySelector(
+    if (showAdvancedServerSelector && streamingSources != null) {
+        AdvancedServerSelector(
             sources = streamingSources!!.sources,
             selectedSource = selectedSource,
-            onSelect = { viewModel.selectSource(it) },
-            selectedVideoQuality = selectedVideoQuality,
-            onSelectVideoQuality = { viewModel.selectQualityByResolution(it) },
-            onDismiss = { showServerSelector = false }
+            onSelectServer = { server, audioType -> viewModel.selectServerAndType(server, audioType) },
+            onDismiss = { showAdvancedServerSelector = false }
+        )
+    }
+
+    val availableHeights by viewModel.availableHeightsForCurrentEndpoint.collectAsStateWithLifecycle()
+    if (showQualitySelector) {
+        QualitySelector(
+            availableHeights = availableHeights,
+            selectedQualityPolicy = selectedQualityPolicy,
+            onSelectQuality = { viewModel.selectQualityByResolution(it) },
+            onDismiss = { showQualitySelector = false }
         )
     }
 
@@ -953,7 +1018,7 @@ private fun formatTime(ms: Long): String {
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun buildPlaybackHeaders(
-    source: StreamingSource,
+    source: SourceEndpoint,
     globalHeaders: Map<String, String>?
 ): Map<String, String> {
     val merged = LinkedHashMap<String, String>()
@@ -969,16 +1034,13 @@ private fun buildPlaybackHeaders(
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, quality: String) {
+private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, qualityPolicy: QualityPolicy) {
     val params = exoPlayer.trackSelectionParameters.buildUpon()
         .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
         .clearVideoSizeConstraints()
     
-    val targetHeight = when (quality) {
-        "1080p" -> 1080
-        "720p" -> 720
-        "480p" -> 480
-        "360p" -> 360
+    val targetHeight = when (qualityPolicy) {
+        is QualityPolicy.FixedHeight -> qualityPolicy.height
         else -> 0
     }
     
