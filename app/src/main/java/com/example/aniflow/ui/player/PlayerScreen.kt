@@ -754,28 +754,30 @@ fun PlayerScreen(
                                 viewModel = viewModel,
                                 exoPlayer = exoPlayer,
                                 deviceType = deviceType,
-                                modifier = Modifier.fillMaxWidth().height(16.dp)
+                                modifier = Modifier.fillMaxWidth().height(if (deviceType == DeviceType.TV) 8.dp else 16.dp)
                             )
                             Spacer(Modifier.height(8.dp))
                             
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ScopedProgressText(viewModel = viewModel)
-
+                            if (deviceType == DeviceType.TV) {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (deviceType == DeviceType.TV) {
-                                        TvPlayerControlItem(
-                                            text = if (isPlaying) "Pause" else "Play",
-                                            focusRequester = playPauseFocusRequester,
-                                            isRedesign = isRedesign,
-                                            onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }
-                                        )
+                                    ScopedProgressText(viewModel = viewModel)
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                
+                                // Row 1: Primary Playback Keys
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         TvPlayerControlItem(
                                             text = "Prev Ep",
                                             isRedesign = isRedesign,
@@ -787,6 +789,12 @@ fun PlayerScreen(
                                             onClick = { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)) }
                                         )
                                         TvPlayerControlItem(
+                                            text = if (isPlaying) "Pause" else "Play",
+                                            focusRequester = playPauseFocusRequester,
+                                            isRedesign = isRedesign,
+                                            onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }
+                                        )
+                                        TvPlayerControlItem(
                                             text = "+10s",
                                             isRedesign = isRedesign,
                                             onClick = { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration)) }
@@ -796,6 +804,21 @@ fun PlayerScreen(
                                             isRedesign = isRedesign,
                                             onClick = { viewModel.playNextEpisode() }
                                         )
+                                    }
+                                }
+                                
+                                Spacer(Modifier.height(12.dp))
+                                
+                                // Row 2: Secondary Settings Keys
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         val qualityLabel = when (val q = selectedQualityPolicy) {
                                             is QualityPolicy.Auto -> "Auto"
                                             is QualityPolicy.MaxAvailable -> "Best"
@@ -810,8 +833,9 @@ fun PlayerScreen(
                                                 onClick = { showQualitySelector = true }
                                             )
                                         }
+                                        val serverLabel = selectedSource?.let { "${it.server.value} (${it.audioType})" } ?: "Server"
                                         TvPlayerControlItem(
-                                            text = selectedSource?.let { "${it.server} (${it.audioType})" } ?: "Server",
+                                            text = serverLabel,
                                             isRedesign = isRedesign,
                                             onClick = { showAdvancedServerSelector = true }
                                         )
@@ -825,7 +849,20 @@ fun PlayerScreen(
                                             isRedesign = isRedesign,
                                             onClick = { showSpeedSelector = true }
                                         )
-                                    } else {
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    ScopedProgressText(viewModel = viewModel)
+                                    
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         val qualityLabel = when (val q = selectedQualityPolicy) {
                                             is QualityPolicy.Auto -> "Auto"
                                             is QualityPolicy.MaxAvailable -> "Best"
@@ -838,7 +875,8 @@ fun PlayerScreen(
                                         if (showQualityButton) {
                                             PhonePlayerControlItem(text = qualityLabel, isRedesign = isRedesign, onClick = { showQualitySelector = true })
                                         }
-                                        PhonePlayerControlItem(text = selectedSource?.let { "${it.server} (${it.audioType})" } ?: "Server", isRedesign = isRedesign, onClick = { showAdvancedServerSelector = true })
+                                        val serverLabel = selectedSource?.let { "${it.server.value} (${it.audioType})" } ?: "Server"
+                                        PhonePlayerControlItem(text = serverLabel, isRedesign = isRedesign, onClick = { showAdvancedServerSelector = true })
                                         PhonePlayerControlItem(text = "Subtitles", isRedesign = isRedesign, onClick = { showSubtitleSelector = true })
                                         PhonePlayerControlItem(text = "Speed", isRedesign = isRedesign, onClick = { showSpeedSelector = true })
                                     }
@@ -970,21 +1008,39 @@ private fun ScopedProgressSlider(
     val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
     val totalDuration by viewModel.totalDuration.collectAsStateWithLifecycle()
 
-    Slider(
-        value = currentPosition.toFloat(),
-        onValueChange = {
-            exoPlayer.seekTo(it.toLong())
-            viewModel.currentPosition.value = it.toLong()
-        },
-        valueRange = 0f..(totalDuration.toFloat().coerceAtLeast(1f)),
-        colors = SliderDefaults.colors(
-            activeTrackColor = PrimaryAccent,
-            inactiveTrackColor = SurfaceBorder,
-            thumbColor = SecondaryAccent
-        ),
-        enabled = deviceType == DeviceType.PHONE,
-        modifier = modifier
-    )
+    if (deviceType == DeviceType.TV) {
+        val progress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color.White.copy(alpha = 0.2f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .background(PrimaryAccent)
+            )
+        }
+    } else {
+        Slider(
+            value = currentPosition.toFloat(),
+            onValueChange = {
+                exoPlayer.seekTo(it.toLong())
+                viewModel.currentPosition.value = it.toLong()
+            },
+            valueRange = 0f..(totalDuration.toFloat().coerceAtLeast(1f)),
+            colors = SliderDefaults.colors(
+                activeTrackColor = PrimaryAccent,
+                inactiveTrackColor = SurfaceBorder,
+                thumbColor = SecondaryAccent
+            ),
+            modifier = modifier
+        )
+    }
 }
 
 @Composable

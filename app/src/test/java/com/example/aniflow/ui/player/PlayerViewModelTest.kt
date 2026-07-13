@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.lifecycle.viewModelScope
 import org.junit.Before
 import org.junit.After
 import org.junit.Test
@@ -24,6 +25,7 @@ import java.io.File
 class PlayerViewModelTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
+    private var activeViewModel: PlayerViewModel? = null
 
     @Before
     fun setUp() {
@@ -32,6 +34,8 @@ class PlayerViewModelTest {
 
     @After
     fun tearDown() {
+        activeViewModel?.viewModelScope?.coroutineContext?.get(kotlinx.coroutines.Job)?.cancel()
+        activeViewModel = null
         Dispatchers.resetMain()
     }
 
@@ -41,7 +45,7 @@ class PlayerViewModelTest {
         val repository = FakeAnimeRepository()
         val watchHistoryStore = WatchHistoryStore(context)
         val settingsStore = SettingsStore(context)
-        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore)
+        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore).also { activeViewModel = it }
 
         val sources = listOf(
             SourceEndpoint("id1", ProviderId.ANILIGHT, ServerId("misa"), AudioType.SUB, StreamType.PROGRESSIVE, "url1", emptyMap(), 0, QualityPolicy.FixedHeight(1080), 1080, "ep1"),
@@ -60,7 +64,7 @@ class PlayerViewModelTest {
         val repository = FakeAnimeRepository()
         val watchHistoryStore = WatchHistoryStore(context)
         val settingsStore = SettingsStore(context)
-        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore)
+        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore).also { activeViewModel = it }
 
         val sources = listOf(
             SourceEndpoint("id1", ProviderId.ANILIGHT, ServerId("misa"), AudioType.SUB, StreamType.PROGRESSIVE, "url1", emptyMap(), 0, QualityPolicy.FixedHeight(1080), 1080, "ep1"),
@@ -87,7 +91,7 @@ class PlayerViewModelTest {
         val repository = FakeAnimeRepository()
         val watchHistoryStore = WatchHistoryStore(context)
         val settingsStore = SettingsStore(context)
-        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore)
+        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore).also { activeViewModel = it }
 
         val sources = listOf(
             SourceEndpoint("id1", ProviderId.ANILIGHT, ServerId("misa"), AudioType.SUB, StreamType.PROGRESSIVE, "url1", emptyMap(), 0, QualityPolicy.FixedHeight(1080), 1080, "ep1"),
@@ -109,7 +113,7 @@ class PlayerViewModelTest {
         val repository = FakeAnimeRepository()
         val watchHistoryStore = WatchHistoryStore(context)
         val settingsStore = SettingsStore(context)
-        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore)
+        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore).also { activeViewModel = it }
 
         settingsStore.setDefaultPlaybackSpeed(1.5f)
         
@@ -128,7 +132,7 @@ class PlayerViewModelTest {
         val repository = FakeAnimeRepository()
         val watchHistoryStore = WatchHistoryStore(context)
         val settingsStore = SettingsStore(context)
-        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore)
+        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore).also { activeViewModel = it }
 
         val sources = listOf(
             SourceEndpoint("id1", ProviderId.ANILIGHT, ServerId("misa"), AudioType.SUB, StreamType.PROGRESSIVE, "url1", emptyMap(), 0, QualityPolicy.FixedHeight(1080), 1080, "ep1"),
@@ -172,7 +176,7 @@ class PlayerViewModelTest {
                 if (url == "url_near_sub") 200 else 404
         }
         
-        val testViewModel = PlayerViewModel(mockRepo, watchHistoryStore, settingsStore, testDispatcher)
+        val testViewModel = PlayerViewModel(mockRepo, watchHistoryStore, settingsStore, testDispatcher).also { activeViewModel = it }
         testViewModel.anime.value = Anime(id = 1, title = "Anime 1", coverImage = "", episodes = 12, averageScore = 80, genres = listOf("Action"))
         testViewModel.episodeList.value = episodes
         
@@ -203,7 +207,7 @@ class PlayerViewModelTest {
             }
         }
 
-        val testViewModel = PlayerViewModel(mockRepo, watchHistoryStore, settingsStore, testDispatcher)
+        val testViewModel = PlayerViewModel(mockRepo, watchHistoryStore, settingsStore, testDispatcher).also { activeViewModel = it }
         testViewModel.anime.value = Anime(id = 1, title = "Anime 1", coverImage = "", episodes = 12, averageScore = 80, genres = listOf("Action"))
         testViewModel.episodeList.value = listOf(Episode("ep1", "Episode 1", 1, "", ""))
 
@@ -224,7 +228,7 @@ class PlayerViewModelTest {
         val repository = FakeAnimeRepository()
         val watchHistoryStore = WatchHistoryStore(context)
         val settingsStore = SettingsStore(context)
-        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore)
+        val viewModel = PlayerViewModel(repository, watchHistoryStore, settingsStore).also { activeViewModel = it }
 
         val sources = listOf(
             SourceEndpoint("id1", ProviderId.ANILIGHT, ServerId("misa"), AudioType.SUB, StreamType.PROGRESSIVE, "url1", emptyMap(), 0, QualityPolicy.FixedHeight(1080), 1080, "ep1")

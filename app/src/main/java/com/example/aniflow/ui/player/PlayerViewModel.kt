@@ -283,7 +283,7 @@ class PlayerViewModel(
                         updateAvailableHeightsFromStaticSources(allSources, chosenServer, selectedAudioType.value)
                     }
                     
-                    selectedSubtitle.value = sources.subtitles.firstOrNull { it.lang.lowercase() == "en" } ?: sources.subtitles.firstOrNull()
+                    selectedSubtitle.value = null
                 } else if (result is ProviderPlaybackResult.Error) {
                     errorMessage.value = result.message
                     hasError.value = true
