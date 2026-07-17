@@ -26,16 +26,25 @@ import coil3.compose.AsyncImage
 import com.example.aniflow.data.model.AiringAnime
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.data.model.WatchHistoryEntry
+import com.example.aniflow.data.UserFeedback
+import androidx.compose.ui.text.font.FontStyle
 import com.example.aniflow.theme.*
 import com.example.aniflow.ui.redesign.components.AmbientBackground
 import com.example.aniflow.ui.redesign.components.GlassCard
 import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.redesign.theme.filmGrainOverlay
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandIn
+import androidx.compose.animation.shrinkOut
 
 @Composable
 fun RedesignPhoneHomeScreen(
@@ -49,21 +58,29 @@ fun RedesignPhoneHomeScreen(
     actionAnime: List<Anime>,
     romanceAnime: List<Anime>,
     history: List<WatchHistoryEntry>,
+    userFeedbackList: List<UserFeedback>,
     onAnimeClick: (Anime) -> Unit,
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
+    var fullscreenTrailerUrl by remember { mutableStateOf<String?>(null) }
+
     AmbientBackground {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
-            contentPadding = PaddingValues(bottom = 24.dp)
-        ) {
-            // Spotlight carousel
-            if (trending.isNotEmpty()) {
-                item {
-                    RedesignSpotlightPager(spotlightList = trending.take(5), onAnimeClick = onAnimeClick)
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                // Spotlight carousel
+                if (trending.isNotEmpty()) {
+                    item {
+                        RedesignSpotlightPager(
+                            spotlightList = trending.take(5),
+                            onAnimeClick = onAnimeClick,
+                            onViewTrailer = { url -> fullscreenTrailerUrl = url }
+                        )
+                    }
                 }
-            }
 
             // Continue Watching Row
             if (history.isNotEmpty()) {
@@ -102,6 +119,78 @@ fun RedesignPhoneHomeScreen(
                                         )
                                     }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // User's Choice Row
+            if (userFeedbackList.isNotEmpty()) {
+                item {
+                    Column {
+                        Text(
+                            text = "❤️ User's Choice",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(userFeedbackList) { feedback ->
+                                GlassCard(
+                                    onClick = {
+                                        onAnimeClick(feedback.anime.toAnime())
+                                    },
+                                    modifier = Modifier
+                                        .width(280.dp)
+                                        .height(96.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = feedback.anime.coverImage,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .width(60.dp)
+                                                .fillMaxHeight()
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                text = feedback.anime.title,
+                                                color = TextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                text = "\"${feedback.feedback}\"",
+                                                color = GlassTokens.TextMuted,
+                                                fontSize = 11.sp,
+                                                fontStyle = FontStyle.Italic,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                lineHeight = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -157,6 +246,45 @@ fun RedesignPhoneHomeScreen(
                     RedesignAnimeSectionRow(title = "📅 Upcoming Season", list = upcoming, onAnimeClick = onAnimeClick)
                 }
             }
+            }
+
+            AnimatedVisibility(
+                visible = fullscreenTrailerUrl != null,
+                enter = fadeIn() + expandIn(expandFrom = Alignment.Center),
+                exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.Center)
+            ) {
+                if (fullscreenTrailerUrl != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                    ) {
+                        BackgroundTrailerPlayer(
+                            trailerUrl = fullscreenTrailerUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            isMuted = false,
+                            onVideoEnded = {
+                                fullscreenTrailerUrl = null
+                            }
+                        )
+
+                        IconButton(
+                            onClick = { fullscreenTrailerUrl = null },
+                            modifier = Modifier
+                                .statusBarsPadding()
+                                .align(Alignment.TopEnd)
+                                .padding(16.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -164,16 +292,24 @@ fun RedesignPhoneHomeScreen(
 @Composable
 fun RedesignSpotlightPager(
     spotlightList: List<Anime>,
-    onAnimeClick: (Anime) -> Unit
+    onAnimeClick: (Anime) -> Unit,
+    onViewTrailer: (String) -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { spotlightList.size })
+    val coroutineScope = rememberCoroutineScope()
     
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(5000)
-            val nextPage = (pagerState.currentPage + 1) % spotlightList.size
-            pagerState.animateScrollToPage(nextPage)
+    LaunchedEffect(pagerState.currentPage) {
+        val currentAnime = spotlightList.getOrNull(pagerState.currentPage)
+        val hasTrailer = !currentAnime?.trailerUrl.isNullOrEmpty()
+        
+        if (hasTrailer) {
+            delay(40_000) // Safety timeout
+        } else {
+            delay(8_000)  // Standard sliding delay
         }
+        
+        val nextPage = (pagerState.currentPage + 1) % spotlightList.size
+        pagerState.animateScrollToPage(nextPage)
     }
 
     Box(
@@ -197,6 +333,21 @@ fun RedesignSpotlightPager(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+                
+                if (pagerState.currentPage == page && !anime.trailerUrl.isNullOrEmpty()) {
+                    BackgroundTrailerPlayer(
+                        trailerUrl = anime.trailerUrl,
+                        modifier = Modifier.fillMaxSize(),
+                        isMuted = true,
+                        onVideoEnded = {
+                            coroutineScope.launch {
+                                val nextPage = (pagerState.currentPage + 1) % spotlightList.size
+                                pagerState.animateScrollToPage(nextPage)
+                            }
+                        }
+                    )
+                }
+                
                 // Backdrop gradient overlay to blend character art beautifully
                 Box(
                     modifier = Modifier
@@ -353,6 +504,37 @@ fun RedesignSpotlightPager(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                            }
+                        }
+
+                        if (!anime.trailerUrl.isNullOrEmpty()) {
+                            OutlinedButton(
+                                onClick = { onViewTrailer(anime.trailerUrl) },
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.4f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = GlassTokens.GlowCyan.copy(alpha = 0.08f)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.PlayArrow,
+                                        contentDescription = null,
+                                        tint = GlassTokens.GlowCyan,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Trailer",
+                                        color = GlassTokens.GlowCyan,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
 

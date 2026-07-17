@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +36,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aniflow.data.ProviderMappingStore
 import com.example.aniflow.data.model.EpisodeLookupResult
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.draw.blur
+import com.example.aniflow.data.UserFeedbackStore
+import com.example.aniflow.data.UserFeedback
 
 @Composable
 fun DetailScreen(
@@ -43,7 +51,9 @@ fun DetailScreen(
     repository: AnimeRepository,
     deviceType: DeviceType,
     watchlistStore: WatchlistStore,
+    userFeedbackStore: UserFeedbackStore,
     onEpisodeClick: (Int) -> Unit,
+    onAnimeClick: (Int) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -57,6 +67,8 @@ fun DetailScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
+    val userFeedbackText by userFeedbackStore.getFeedbackForAnimeFlow(animeId).collectAsState(initial = null)
+    var showFeedbackDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var isBackFocused by remember { mutableStateOf(false) }
 
@@ -98,11 +110,15 @@ fun DetailScreen(
             }
 
             if (currentAnime != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(PrimaryDark)
-                ) {
+                val shouldBlur = showFeedbackDialog
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(PrimaryDark)
+                            .let { if (shouldBlur) it.blur(20.dp) else it }
+                            .focusProperties { canFocus = !shouldBlur }
+                    ) {
                 // Backdrop Image with vertical fading gradient
                 val bannerUrl = currentAnime.bannerImage
                 Box(
@@ -269,14 +285,38 @@ fun DetailScreen(
                                         .onFocusChanged { isFavFocused = it.isFocused }
                                         .focusable(),
                                     contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = "Bookmark",
-                                        tint = PrimaryAccentLight,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                                 ) {
+                                     Icon(
+                                         imageVector = if (isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                         contentDescription = "Bookmark",
+                                         tint = PrimaryAccentLight,
+                                         modifier = Modifier.size(20.dp)
+                                     )
+                                 }
+
+                                 var isFeedbackFocused by remember { mutableStateOf(false) }
+                                 Box(
+                                     modifier = Modifier
+                                         .size(44.dp)
+                                         .clip(RoundedCornerShape(22.dp))
+                                         .background(if (isFeedbackFocused) PrimaryAccent else SurfaceCard)
+                                         .border(
+                                             width = if (isFeedbackFocused) 2.dp else 0.dp,
+                                             color = if (isFeedbackFocused) SecondaryAccent else Color.Transparent,
+                                             shape = RoundedCornerShape(22.dp)
+                                         )
+                                         .clickable { showFeedbackDialog = true }
+                                         .onFocusChanged { isFeedbackFocused = it.isFocused }
+                                         .focusable(),
+                                     contentAlignment = Alignment.Center
+                                 ) {
+                                     Icon(
+                                         imageVector = Icons.Default.Star,
+                                         contentDescription = "Feedback",
+                                         tint = PrimaryAccentLight,
+                                         modifier = Modifier.size(20.dp)
+                                     )
+                                 }
                             }
                         }
                     }
@@ -345,16 +385,93 @@ fun DetailScreen(
                     } else {
                         PhoneEpisodesList(episodes = episodes, onEpisodeClick = onEpisodeClick)
                     }
-                    if (state is DetailUiState.Ambiguous) {
-                        AmbiguousSelectionDialog(
-                            candidates = state.candidates,
-                            onSelect = { candidate ->
-                                viewModel.confirmMapping(currentAnime, candidate)
-                            },
-                            onDismiss = {
-                                viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
-                            }
+
+                    // Similar Recommendations Section
+                    if (currentAnime.recommendations.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Text(
+                            text = "Similar Recommendations",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp)
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                        ) {
+                            items(currentAnime.recommendations) { recAnime ->
+                                var isFocused by remember { mutableStateOf(false) }
+                                Box(
+                                    modifier = Modifier
+                                        .width(if (deviceType == DeviceType.TV) 140.dp else 120.dp)
+                                        .onFocusChanged { isFocused = it.isFocused }
+                                        .clickable { onAnimeClick(recAnime.id) }
+                                        .focusable()
+                                        .background(if (isFocused) SurfaceCard else Color.Transparent, RoundedCornerShape(8.dp))
+                                        .padding(8.dp)
+                                ) {
+                                    Column {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(0.7f)
+                                                .clip(RoundedCornerShape(6.dp))
+                                        ) {
+                                            AsyncImage(
+                                                model = recAnime.coverImage,
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        Text(
+                                            text = recAnime.title,
+                                            color = TextPrimary,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    }
+                    if (state is DetailUiState.Ambiguous || showFeedbackDialog) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.85f))
+                                .clickable(enabled = true, onClick = {})
+                        )
+                        if (state is DetailUiState.Ambiguous) {
+                            AmbiguousSelectionDialog(
+                                candidates = state.candidates,
+                                onSelect = { candidate ->
+                                    viewModel.confirmMapping(currentAnime, candidate)
+                                },
+                                onDismiss = {
+                                    viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
+                                }
+                            )
+                        }
+                        if (showFeedbackDialog) {
+                            FeedbackInputDialog(
+                                initialFeedback = userFeedbackText ?: "",
+                                onDismiss = { showFeedbackDialog = false },
+                                onSubmit = { text ->
+                                    coroutineScope.launch {
+                                        userFeedbackStore.saveFeedback(currentAnime, text)
+                                    }
+                                    showFeedbackDialog = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -516,5 +633,102 @@ fun AmbiguousSelectionDialog(
         containerColor = SurfaceCard,
         shape = RoundedCornerShape(16.dp)
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FeedbackInputDialog(
+    initialFeedback: String,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initialFeedback) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = SurfaceCard
+            ),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .width(400.dp)
+                .padding(24.dp)
+                .border(1.dp, PrimaryAccent.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Why do you think this anime is good?",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp),
+                    placeholder = { Text("Write your reason...", color = TextSecondary, fontSize = 14.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .focusRequester(focusRequester),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = PrimaryAccent,
+                        unfocusedBorderColor = TextSecondary.copy(alpha = 0.5f),
+                        cursorColor = PrimaryAccent
+                    )
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    var isCancelFocused by remember { mutableStateOf(false) }
+                    var isSubmitFocused by remember { mutableStateOf(false) }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .onFocusChanged { isCancelFocused = it.isFocused }
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isCancelFocused) PrimaryAccent else Color.Transparent)
+                            .clickable { onDismiss() }
+                            .focusable(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Cancel", color = if (isCancelFocused) TextPrimary else TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .onFocusChanged { isSubmitFocused = it.isFocused }
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isSubmitFocused) PrimaryAccent else SecondaryAccent)
+                            .clickable { onSubmit(text) }
+                            .focusable(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Submit", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 }
 

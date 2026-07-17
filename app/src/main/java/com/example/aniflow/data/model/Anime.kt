@@ -19,7 +19,8 @@ data class Anime(
     val studioName: String? = null,
     val nextAiringEpisode: Int? = null,
     val nextAiringAt: Long? = null,
-    val trailerUrl: String? = null
+    val trailerUrl: String? = null,
+    val recommendations: List<Anime> = emptyList()
 )
 
 @Serializable

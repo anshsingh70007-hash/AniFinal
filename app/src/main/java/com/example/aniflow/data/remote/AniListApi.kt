@@ -25,7 +25,7 @@ class AniListApi(private val client: HttpClient) {
     private val MEDIA_FIELDS = """
         id
         title { romaji english }
-        coverImage { large }
+        coverImage { extraLarge large }
         bannerImage
         description
         episodes
@@ -35,6 +35,7 @@ class AniListApi(private val client: HttpClient) {
         season
         seasonYear
         studios(isMain: true) { nodes { name } }
+        trailer { id site thumbnail }
     """.trimIndent()
 
     private suspend fun queryAniList(query: String, variables: JsonObject): JsonObject? {
@@ -312,6 +313,20 @@ class AniListApi(private val client: HttpClient) {
             query (${'$'}id: Int) {
               Media (id: ${'$'}id) {
                 $MEDIA_FIELDS
+                recommendations(sort: RATING_DESC, perPage: 10) {
+                  nodes {
+                    mediaRecommendation {
+                      id
+                      title { romaji english }
+                      coverImage { extraLarge large }
+                      bannerImage
+                      averageScore
+                      episodes
+                      genres
+                      status
+                    }
+                  }
+                }
               }
             }
         """.trimIndent()
@@ -331,7 +346,11 @@ class AniListApi(private val client: HttpClient) {
         val animeList = mutableListOf<Anime>()
         try {
             response?.get("data")?.jsonObject?.get("Page")?.jsonObject?.get("media")?.jsonArray?.forEach { element ->
-                animeList.add(mapMediaObjToAnime(element.jsonObject))
+                try {
+                    animeList.add(mapMediaObjToAnime(element.jsonObject))
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -340,20 +359,44 @@ class AniListApi(private val client: HttpClient) {
     }
 
     private fun mapMediaObjToAnime(mediaObj: JsonObject): Anime {
-        val titleObj = mediaObj["title"]?.jsonObject
-        val coverObj = mediaObj["coverImage"]?.jsonObject
-        val genresList = mediaObj["genres"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
-        val studiosList = mediaObj["studios"]?.jsonObject?.get("nodes")?.jsonArray
+        val titleObj = mediaObj["title"] as? JsonObject
+        val coverObj = mediaObj["coverImage"] as? JsonObject
+        val genresList = (mediaObj["genres"] as? JsonArray)?.map { it.jsonPrimitive.content } ?: emptyList()
+        val studiosList = (mediaObj["studios"] as? JsonObject)?.get("nodes") as? JsonArray
         val studioName = if (studiosList != null && studiosList.isNotEmpty()) {
-            studiosList[0].jsonObject["name"]?.jsonPrimitive?.content
+            (studiosList[0] as? JsonObject)?.get("name")?.jsonPrimitive?.content
         } else null
+
+        val trailerObj = mediaObj["trailer"] as? JsonObject
+        val trailerSite = trailerObj?.get("site")?.jsonPrimitive?.contentOrNull
+        val trailerId = trailerObj?.get("id")?.jsonPrimitive?.contentOrNull
+        val trailerUrl = if (trailerSite == "youtube" && trailerId != null) {
+            "https://www.youtube-nocookie.com/embed/$trailerId?autoplay=1&mute=1&controls=0&showinfo=0&loop=1&playlist=$trailerId&modestbranding=1&rel=0&disablekb=1&origin=https://www.youtube-nocookie.com"
+        } else if (trailerSite == "dailymotion" && trailerId != null) {
+            "https://www.dailymotion.com/embed/video/$trailerId?autoplay=1&mute=1&controls=0&queue-enable=0"
+        } else null
+
+        val recommendationsList = mutableListOf<Anime>()
+        try {
+            val recsObj = mediaObj["recommendations"] as? JsonObject
+            recsObj?.get("nodes") as? JsonArray
+            (recsObj?.get("nodes") as? JsonArray)?.forEach { nodeElement ->
+                val recMedia = (nodeElement as? JsonObject)?.get("mediaRecommendation") as? JsonObject
+                if (recMedia != null) {
+                    recommendationsList.add(mapMediaObjToAnime(recMedia))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         return Anime(
             id = mediaObj["id"]?.jsonPrimitive?.int ?: 0,
             title = titleObj?.get("english")?.jsonPrimitive?.contentOrNull
                 ?: titleObj?.get("romaji")?.jsonPrimitive?.content ?: "Anime Title",
             englishTitle = titleObj?.get("english")?.jsonPrimitive?.contentOrNull,
-            coverImage = coverObj?.get("large")?.jsonPrimitive?.content ?: "",
+            coverImage = coverObj?.get("extraLarge")?.jsonPrimitive?.contentOrNull
+                ?: coverObj?.get("large")?.jsonPrimitive?.content ?: "",
             bannerImage = mediaObj["bannerImage"]?.jsonPrimitive?.contentOrNull,
             description = mediaObj["description"]?.jsonPrimitive?.contentOrNull,
             episodes = mediaObj["episodes"]?.jsonPrimitive?.intOrNull,
@@ -362,7 +405,9 @@ class AniListApi(private val client: HttpClient) {
             status = mediaObj["status"]?.jsonPrimitive?.content ?: "FINISHED",
             season = mediaObj["season"]?.jsonPrimitive?.contentOrNull,
             seasonYear = mediaObj["seasonYear"]?.jsonPrimitive?.intOrNull,
-            studioName = studioName
+            studioName = studioName,
+            trailerUrl = trailerUrl,
+            recommendations = recommendationsList
         )
     }
 }

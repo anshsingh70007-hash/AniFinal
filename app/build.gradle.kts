@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.aniflow"
         minSdk = 24
         targetSdk = 36
-        versionCode = 48
-        versionName = "1.8.3"
+        versionCode = 49
+        versionName = "1.8.4"
         buildConfigField("String", "PROVIDER_BACKEND_URL", "\"\"")
     }
 

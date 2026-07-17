@@ -15,6 +15,7 @@ class MainScreenViewModel(
     private val repository: AnimeRepository,
     private val watchlistStore: WatchlistStore,
     private val watchHistoryStore: WatchHistoryStore,
+    private val userFeedbackStore: UserFeedbackStore,
     private val context: android.content.Context
 ) : ViewModel() {
 
@@ -22,6 +23,9 @@ class MainScreenViewModel(
 
     private val _currentTab = MutableStateFlow(0)
     val currentTab = _currentTab.asStateFlow()
+
+    private val _userFeedbackList = MutableStateFlow<List<UserFeedback>>(emptyList())
+    val userFeedbackList = _userFeedbackList.asStateFlow()
 
     private val _trending = MutableStateFlow<List<Anime>>(emptyList())
     val trending = _trending.asStateFlow()
@@ -72,9 +76,18 @@ class MainScreenViewModel(
         loadData()
         observeWatchlist()
         observeHistory()
+        observeUserFeedback()
         setupSearchDebounce()
         checkForUpdates()
         startPeriodicRefresh()
+    }
+
+    private fun observeUserFeedback() {
+        viewModelScope.launch {
+            userFeedbackStore.feedbackListFlow.collect { list ->
+                _userFeedbackList.value = list.sortedByDescending { it.timestamp }
+            }
+        }
     }
 
     private fun startPeriodicRefresh() {

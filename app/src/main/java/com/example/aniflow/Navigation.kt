@@ -20,6 +20,7 @@ fun MainNavigation() {
     val watchlistStore = remember { com.example.aniflow.data.WatchlistStore(context) }
     val watchHistoryStore = remember { com.example.aniflow.data.WatchHistoryStore(context) }
     val settingsStore = remember { com.example.aniflow.data.SettingsStore(context) }
+    val userFeedbackStore = remember { com.example.aniflow.data.UserFeedbackStore(context) }
     val backStack = rememberNavBackStack(Main)
     val isRedesign = remember {
         context.packageName.endsWith(".redesign")
@@ -36,7 +37,8 @@ fun MainNavigation() {
                     repository = repository,
                     watchlistStore = watchlistStore,
                     watchHistoryStore = watchHistoryStore,
-                    settingsStore = settingsStore
+                    settingsStore = settingsStore,
+                    userFeedbackStore = userFeedbackStore
                 )
             }
             entry<Detail> { detailKey ->
@@ -46,8 +48,12 @@ fun MainNavigation() {
                         repository = repository,
                         deviceType = deviceType,
                         watchlistStore = watchlistStore,
+                        userFeedbackStore = userFeedbackStore,
                         onEpisodeClick = { epNum ->
                             backStack.add(Player(detailKey.animeId, epNum))
+                        },
+                        onAnimeClick = { id ->
+                            backStack.add(Detail(id))
                         },
                         onBack = { backStack.removeLastOrNull() }
                     )
@@ -57,8 +63,12 @@ fun MainNavigation() {
                         repository = repository,
                         deviceType = deviceType,
                         watchlistStore = watchlistStore,
+                        userFeedbackStore = userFeedbackStore,
                         onEpisodeClick = { epNum ->
                             backStack.add(Player(detailKey.animeId, epNum))
+                        },
+                        onAnimeClick = { id ->
+                            backStack.add(Detail(id))
                         },
                         onBack = { backStack.removeLastOrNull() }
                     )

@@ -753,6 +753,148 @@ class PlayerViewModel(
         }
     }
 
+    fun selectAudioType(audioType: AudioType) {
+        if (selectedAudioType.value == audioType) return
+        val originalAudioType = selectedAudioType.value
+        selectedAudioType.value = audioType
+        viewModelScope.launch {
+            try {
+                settingsStore.setLanguage(if (audioType == AudioType.DUB) "dub" else "sub")
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        
+        val resumePosition = currentPosition.value
+
+        generationId++
+        val currentGen = generationId
+
+        resolutionJob?.cancel()
+        resolutionJob = viewModelScope.launch {
+            isLoading.value = true
+            hasError.value = false
+            try {
+                val currentAnime = anime.value ?: return@launch
+                val eps = episodeList.value
+                val index = currentEpisodeIndex.value
+                if (index !in eps.indices) return@launch
+                val ep = eps[index]
+
+                val request = EpisodeRequest(
+                    provider = activeProvider,
+                    seriesSlug = currentAnime.title,
+                    episodeId = ep.id,
+                    animeId = currentAnime.id,
+                    episodeNumber = ep.number,
+                    audioType = audioType
+                )
+                val result = repository.getStreamingSources(request)
+                if (currentGen != generationId) return@launch
+
+                if (result is PlaybackResult.NativeSources) {
+                    val response = EpisodeSourcesResponse(
+                        sources = result.sources,
+                        subtitles = result.subtitles
+                    )
+                    streamingSources.value = response
+
+                    val allSources = result.sources
+                    if (allSources.isNotEmpty()) {
+                        var langSources = allSources.filter { it.audioType == audioType }
+                        if (langSources.isEmpty()) {
+                            val fallbackAudio = if (audioType == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                            langSources = allSources.filter { it.audioType == fallbackAudio }
+                            selectedAudioType.value = fallbackAudio
+                        }
+
+                        val verifiedSource = withContext(ioDispatcher) {
+                            val startTime = System.currentTimeMillis()
+                            coroutineScope {
+                                val deferreds = langSources.map { source ->
+                                    async {
+                                        val isLive = try {
+                                            withTimeoutOrNull(1500L) {
+                                                val status = repository.checkUrlStatus(source.url, source.headers)
+                                                println("Checked server ${source.server.value} (${source.audioType}): status=$status in ${System.currentTimeMillis() - startTime}ms")
+                                                status in 200..399
+                                            } ?: false
+                                        } catch (e: Exception) {
+                                            false
+                                        }
+                                        if (isLive) source else null
+                                    }
+                                }
+                                deferreds.map { it.await() }.firstOrNull { it != null }
+                            }
+                        }
+
+                        var chosenSource = verifiedSource
+                        if (chosenSource == null) {
+                            val fallbackAudio = if (selectedAudioType.value == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                            val fallbackSources = allSources.filter { it.audioType == fallbackAudio }
+                            if (fallbackSources.isNotEmpty()) {
+                                val verifiedFallback = withContext(ioDispatcher) {
+                                    coroutineScope {
+                                        val deferreds = fallbackSources.map { source ->
+                                            async {
+                                                val isLive = try {
+                                                    withTimeoutOrNull(1500L) {
+                                                        val status = repository.checkUrlStatus(source.url, source.headers)
+                                                        status in 200..399
+                                                    } ?: false
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                                if (isLive) source else null
+                                            }
+                                        }
+                                        deferreds.map { it.await() }.firstOrNull { it != null }
+                                    }
+                                }
+                                if (verifiedFallback != null) {
+                                    chosenSource = verifiedFallback
+                                    selectedAudioType.value = fallbackAudio
+                                }
+                            }
+                        }
+
+                        if (chosenSource == null) {
+                            chosenSource = langSources.firstOrNull()
+                        }
+
+                        if (currentGen != generationId) return@launch
+
+                        val chosenServer = chosenSource?.server?.value
+                        selectedServer.value = chosenServer
+
+                        val initialSource = resolveSourceInternal(allSources, chosenServer, selectedAudioType.value, selectedVideoQuality.value)
+                        
+                        currentPosition.value = resumePosition
+                        selectedSource.value = initialSource
+
+                        updateAvailableHeightsFromStaticSources(allSources, chosenServer, selectedAudioType.value)
+                    }
+                    selectedSubtitle.value = null
+                } else {
+                    selectedAudioType.value = originalAudioType
+                    errorMessage.value = "Audio type ${audioType.name} is not available for this episode."
+                    hasError.value = true
+                }
+            } catch (e: Exception) {
+                if (currentGen == generationId) {
+                    selectedAudioType.value = originalAudioType
+                    errorMessage.value = "Failed to switch audio: ${e.message}"
+                    hasError.value = true
+                }
+            } finally {
+                if (currentGen == generationId) {
+                    isLoading.value = false
+                }
+            }
+        }
+    }
+
     fun selectQualityByResolution(resolution: String) {
         selectedVideoQuality.value = resolution
         viewModelScope.launch {

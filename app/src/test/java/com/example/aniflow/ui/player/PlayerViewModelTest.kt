@@ -470,13 +470,14 @@ class PlayerViewModelTest {
 }
 
 private class FakeContext : ContextWrapper(null) {
+    private val filesDirLazy by lazy {
+        val file = File(System.getProperty("java.io.tmpdir"), "aniflow_test_files_" + System.nanoTime())
+        file.mkdirs()
+        file
+    }
     override fun getApplicationContext(): Context = this
     override fun getPackageName(): String = "com.example.aniflow"
-    override fun getFilesDir(): File {
-        val file = File(System.getProperty("java.io.tmpdir"), "aniflow_test_files_" + System.currentTimeMillis())
-        file.mkdirs()
-        return file
-    }
+    override fun getFilesDir(): File = filesDirLazy
 }
 
 private class FakeAnimeRepository : AnimeRepository {

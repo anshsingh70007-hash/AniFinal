@@ -105,6 +105,7 @@ fun PlayerScreen(
     val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsStateWithLifecycle()
     val selectedQualityPolicy by viewModel.selectedQualityPolicy.collectAsStateWithLifecycle()
     val providerStatuses by viewModel.providerStatuses.collectAsStateWithLifecycle()
+    val selectedAudioType by viewModel.selectedAudioType.collectAsStateWithLifecycle()
 
     var showAdvancedServerSelector by remember { mutableStateOf(false) }
     var showQualitySelector by remember { mutableStateOf(false) }
@@ -880,6 +881,15 @@ fun PlayerScreen(
                                             onClick = { showSubtitleSelector = true }
                                         )
                                         TvPlayerControlItem(
+                                            text = if (selectedAudioType == AudioType.SUB) "Audio: SUB" else "Audio: DUB",
+                                            isRedesign = isRedesign,
+                                            onClick = {
+                                                exoPlayer.pause()
+                                                val nextType = if (selectedAudioType == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                                                viewModel.selectAudioType(nextType)
+                                            }
+                                        )
+                                        TvPlayerControlItem(
                                             text = "Speed",
                                             isRedesign = isRedesign,
                                             onClick = { showSpeedSelector = true }
@@ -918,6 +928,15 @@ fun PlayerScreen(
                                             PhonePlayerControlItem(text = qualityLabel, isRedesign = isRedesign, onClick = { showQualitySelector = true })
                                         }
                                         PhonePlayerControlItem(text = "Subtitles", isRedesign = isRedesign, onClick = { showSubtitleSelector = true })
+                                        PhonePlayerControlItem(
+                                            text = if (selectedAudioType == AudioType.SUB) "SUB" else "DUB",
+                                            isRedesign = isRedesign,
+                                            onClick = {
+                                                exoPlayer.pause()
+                                                val nextType = if (selectedAudioType == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                                                viewModel.selectAudioType(nextType)
+                                            }
+                                        )
                                         PhonePlayerControlItem(text = "Speed", isRedesign = isRedesign, onClick = { showSpeedSelector = true })
                                     }
                                 }

@@ -1,8 +1,8 @@
 {
-  "versionCode": 48,
-  "versionName": "1.8.3",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.3-redesign.apk",
-  "updateNotes": "Bug fixes & player controls layout fixes. Added resolution quality options inside player controls (360p-1080p), removed manual server selector for background auto-routing, and enforced dark theme mode exclusively.",
+  "versionCode": 49,
+  "versionName": "1.8.4",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/1.8.4/releases/AniFinal_1.8.4-redesign.apk",
+  "updateNotes": "This update fixes the User's Choice section on the homepage and resolves the internet/serialization crashes. It also adds unmuted high-quality trailer audio on Android TV when hovered, and introduces a one-time onboarding popup helper to explain how to share feedback.",
   "forceUpdate": false,
   "silentUpdate": false
 }

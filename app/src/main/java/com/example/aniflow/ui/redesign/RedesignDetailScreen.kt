@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.aniflow.DeviceType
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.text.font.FontStyle
+import com.example.aniflow.data.UserFeedbackStore
+import com.example.aniflow.data.UserFeedback
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.data.model.Episode
 import com.example.aniflow.data.repository.AnimeRepository
@@ -54,7 +61,9 @@ fun RedesignDetailScreen(
     repository: AnimeRepository,
     deviceType: DeviceType,
     watchlistStore: WatchlistStore,
+    userFeedbackStore: UserFeedbackStore,
     onEpisodeClick: (Int) -> Unit,
+    onAnimeClick: (Int) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -68,6 +77,8 @@ fun RedesignDetailScreen(
 
     val uiState by viewModel.uiState.collectAsState()
     val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
+    val userFeedbackText by userFeedbackStore.getFeedbackForAnimeFlow(animeId).collectAsState(initial = null)
+    var showFeedbackDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var isBackFocused by remember { mutableStateOf(false) }
 
@@ -120,12 +131,14 @@ fun RedesignDetailScreen(
             }
 
             AmbientBackground {
-                val isBlurry = state is DetailUiState.Ambiguous
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .let { if (isBlurry) it.blur(20.dp) else it }
-                ) {
+                val isBlurry = state is DetailUiState.Ambiguous || showFeedbackDialog
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .let { if (isBlurry) it.blur(20.dp) else it }
+                            .focusProperties { canFocus = !isBlurry }
+                    ) {
                     // Panoramic Background Image with soft dark blur overlay
                     val bannerUrl = currentAnime.bannerImage
                     Box(
@@ -327,7 +340,8 @@ fun RedesignDetailScreen(
                                                 onEpisodeClick = onEpisodeClick,
                                                 watchlistStore = watchlistStore,
                                                 currentAnime = currentAnime,
-                                                coroutineScope = coroutineScope
+                                                coroutineScope = coroutineScope,
+                                                onLeaveFeedback = { showFeedbackDialog = true }
                                             )
                                         }
                                     }
@@ -455,7 +469,8 @@ fun RedesignDetailScreen(
                                         onEpisodeClick = onEpisodeClick,
                                         watchlistStore = watchlistStore,
                                         currentAnime = currentAnime,
-                                        coroutineScope = coroutineScope
+                                        coroutineScope = coroutineScope,
+                                        onLeaveFeedback = { showFeedbackDialog = true }
                                     )
                                 }
                             }
@@ -537,6 +552,83 @@ fun RedesignDetailScreen(
                                 }
                             }
                         }
+
+                        // Similar Recommendations Section
+                        if (currentAnime.recommendations.isNotEmpty()) {
+                            Spacer(Modifier.height(32.dp))
+                            Text(
+                                text = "🌟 Similar Recommendations",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                            ) {
+                                items(currentAnime.recommendations) { recAnime ->
+                                    var isFocused by remember { mutableStateOf(false) }
+                                    Box(
+                                        modifier = Modifier
+                                            .width(if (deviceType == DeviceType.TV) 140.dp else 120.dp)
+                                            .onFocusChanged { isFocused = it.isFocused }
+                                            .focusGlow(isFocused, RoundedCornerShape(12.dp))
+                                            .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+                                            .clickable { onAnimeClick(recAnime.id) }
+                                            .focusable()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(0.7f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                            ) {
+                                                AsyncImage(
+                                                    model = recAnime.coverImage,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                                recAnime.averageScore?.let { score ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.TopEnd)
+                                                            .padding(6.dp)
+                                                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                                            .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "★ ${String.format("%.1f", score / 10.0)}",
+                                                            color = GlassTokens.GlowCyan,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                text = recAnime.title,
+                                                color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     }
                     if (isBlurry) {
                         Box(
@@ -545,15 +637,29 @@ fun RedesignDetailScreen(
                                 .background(Color.Black.copy(alpha = 0.85f))
                                 .clickable(enabled = true, onClick = {})
                         )
-                        RedesignAmbiguousSelectionDialog(
-                            candidates = (state as DetailUiState.Ambiguous).candidates,
-                            onSelect = { candidate ->
-                                viewModel.confirmMapping(currentAnime, candidate)
-                            },
-                            onDismiss = {
-                                viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
-                            }
-                        )
+                        if (state is DetailUiState.Ambiguous) {
+                            RedesignAmbiguousSelectionDialog(
+                                candidates = state.candidates,
+                                onSelect = { candidate ->
+                                    viewModel.confirmMapping(currentAnime, candidate)
+                                },
+                                onDismiss = {
+                                    viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
+                                }
+                            )
+                        }
+                        if (showFeedbackDialog) {
+                            FeedbackInputDialog(
+                                initialFeedback = userFeedbackText ?: "",
+                                onDismiss = { showFeedbackDialog = false },
+                                onSubmit = { text ->
+                                    coroutineScope.launch {
+                                        userFeedbackStore.saveFeedback(currentAnime, text)
+                                    }
+                                    showFeedbackDialog = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -569,7 +675,8 @@ private fun ActionButtonsRow(
     onEpisodeClick: (Int) -> Unit,
     watchlistStore: WatchlistStore,
     currentAnime: Anime,
-    coroutineScope: kotlinx.coroutines.CoroutineScope
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onLeaveFeedback: () -> Unit
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -607,6 +714,25 @@ private fun ActionButtonsRow(
                     fontSize = 14.sp
                 )
             }
+        }
+
+        var isFeedbackFocused by remember { mutableStateOf(false) }
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .onFocusChanged { isFeedbackFocused = it.isFocused }
+                .focusGlow(isFeedbackFocused, RoundedCornerShape(24.dp), focusedScale = 1.05f)
+                .glassSurface(RoundedCornerShape(24.dp), isFocused = isFeedbackFocused)
+                .clickable { onLeaveFeedback() }
+                .focusable(),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = "Feedback",
+                tint = if (isFeedbackFocused) GlassTokens.GlowCyan else TextPrimary,
+                modifier = Modifier.size(24.dp)
+            )
         }
 
         var isFavFocused by remember { mutableStateOf(false) }
@@ -775,4 +901,102 @@ fun RedesignAmbiguousSelectionDialog(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FeedbackInputDialog(
+    initialFeedback: String,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initialFeedback) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF0F0E17).copy(alpha = 0.98f)
+            ),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .width(400.dp)
+                .padding(24.dp)
+                .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Why do you think this anime is good?",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp),
+                    placeholder = { Text("Write your reason...", color = GlassTokens.TextMuted, fontSize = 14.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .focusRequester(focusRequester),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = GlassTokens.GlowCyan,
+                        unfocusedBorderColor = GlassTokens.TextMuted.copy(alpha = 0.5f),
+                        cursorColor = GlassTokens.GlowCyan
+                    )
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    var isCancelFocused by remember { mutableStateOf(false) }
+                    var isSubmitFocused by remember { mutableStateOf(false) }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .onFocusChanged { isCancelFocused = it.isFocused }
+                            .focusGlow(isCancelFocused, RoundedCornerShape(20.dp), focusedScale = 1.03f)
+                            .glassSurface(RoundedCornerShape(20.dp), isFocused = isCancelFocused)
+                            .clickable { onDismiss() }
+                            .focusable(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Cancel", color = if (isCancelFocused) GlassTokens.GlowCyan else TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .onFocusChanged { isSubmitFocused = it.isFocused }
+                            .focusGlow(isSubmitFocused, RoundedCornerShape(20.dp), focusedScale = 1.03f)
+                            .glassSurface(RoundedCornerShape(20.dp), isFocused = isSubmitFocused)
+                            .clickable { onSubmit(text) }
+                            .focusable(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Submit", color = if (isSubmitFocused) GlassTokens.GlowCyan else GlassTokens.GlowCyan.copy(alpha = 0.7f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
 

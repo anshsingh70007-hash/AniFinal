@@ -26,6 +26,8 @@ import coil3.compose.AsyncImage
 import com.example.aniflow.data.model.AiringAnime
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.data.model.WatchHistoryEntry
+import com.example.aniflow.data.UserFeedback
+import androidx.compose.ui.text.font.FontStyle
 import com.example.aniflow.theme.*
 import kotlinx.coroutines.delay
 
@@ -41,6 +43,7 @@ fun PhoneHomeScreen(
     actionAnime: List<Anime>,
     romanceAnime: List<Anime>,
     history: List<WatchHistoryEntry>,
+    userFeedbackList: List<UserFeedback>,
     onAnimeClick: (Anime) -> Unit,
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
@@ -93,6 +96,79 @@ fun PhoneHomeScreen(
                                     )
                                 }
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // User's Choice Row
+        if (userFeedbackList.isNotEmpty()) {
+            item {
+                Column {
+                    Text(
+                        text = "❤️ User's Choice",
+                        color = TextPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(userFeedbackList) { feedback ->
+                            Box(
+                                modifier = Modifier
+                                    .width(280.dp)
+                                    .height(96.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SurfaceCard)
+                                    .clickable {
+                                        onAnimeClick(feedback.anime.toAnime())
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AsyncImage(
+                                        model = feedback.anime.coverImage,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .width(60.dp)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = feedback.anime.title,
+                                            color = TextPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = "\"${feedback.feedback}\"",
+                                            color = TextSecondary,
+                                            fontSize = 11.sp,
+                                            fontStyle = FontStyle.Italic,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

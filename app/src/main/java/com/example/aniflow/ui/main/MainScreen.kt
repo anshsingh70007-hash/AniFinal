@@ -43,6 +43,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
+import com.example.aniflow.data.UserFeedbackStore
+import com.example.aniflow.data.UserFeedback
 import androidx.compose.foundation.shape.CircleShape
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,11 +76,13 @@ fun MainScreen(
     watchlistStore: WatchlistStore? = null,
     watchHistoryStore: WatchHistoryStore? = null,
     settingsStore: SettingsStore? = null,
+    userFeedbackStore: UserFeedbackStore? = null,
     viewModel: MainScreenViewModel = run {
         val context = LocalContext.current.applicationContext
         val watchList = watchlistStore ?: WatchlistStore(context)
         val watchHistory = watchHistoryStore ?: WatchHistoryStore(context)
-        viewModel { MainScreenViewModel(repository, watchList, watchHistory, context) }
+        val feedbackStore = userFeedbackStore ?: UserFeedbackStore(context)
+        viewModel { MainScreenViewModel(repository, watchList, watchHistory, feedbackStore, context) }
     }
 ) {
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
@@ -98,6 +102,7 @@ fun MainScreen(
     val isSearchLoading by viewModel.isSearchLoading.collectAsStateWithLifecycle()
     val watchlist by viewModel.watchlist.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
+    val userFeedbackList by viewModel.userFeedbackList.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
@@ -105,13 +110,15 @@ fun MainScreen(
     val wStore = remember { watchlistStore ?: WatchlistStore(context) }
     val hStore = remember { watchHistoryStore ?: WatchHistoryStore(context) }
     val sStore = remember { settingsStore ?: SettingsStore(context) }
+    val feedbackOnboardingShown by sStore.feedbackOnboardingShown.collectAsStateWithLifecycle(initialValue = true)
+    val showOnboarding = !feedbackOnboardingShown && updateInfo == null
     val isRedesign = remember {
         context.packageName.endsWith(".redesign")
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (updateInfo == null || !updateInfo!!.forceUpdate) {
-            val contentModifier = if (updateInfo != null) {
+            val contentModifier = if (updateInfo != null || showOnboarding) {
                 Modifier
                     .focusProperties { canFocus = false }
                     .let {
@@ -166,6 +173,7 @@ fun MainScreen(
                                                 actionAnime = actionAnime,
                                                 romanceAnime = romanceAnime,
                                                 history = history,
+                                                userFeedbackList = userFeedbackList,
                                                 onAnimeClick = { onItemClick(Detail(it.id)) },
                                                 onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
                                             )
@@ -204,6 +212,7 @@ fun MainScreen(
                                                 actionAnime = actionAnime,
                                                 romanceAnime = romanceAnime,
                                                 history = history,
+                                                userFeedbackList = userFeedbackList,
                                                 onAnimeClick = { onItemClick(Detail(it.id)) },
                                                 onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
                                             )
@@ -453,6 +462,7 @@ fun MainScreen(
                                         actionAnime = actionAnime,
                                         romanceAnime = romanceAnime,
                                         history = history,
+                                        userFeedbackList = userFeedbackList,
                                         onAnimeClick = { onItemClick(Detail(it.id)) },
                                         onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
                                     )
@@ -491,6 +501,7 @@ fun MainScreen(
                                         actionAnime = actionAnime,
                                         romanceAnime = romanceAnime,
                                         history = history,
+                                        userFeedbackList = userFeedbackList,
                                         onAnimeClick = { onItemClick(Detail(it.id)) },
                                         onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
                                     )
@@ -532,6 +543,17 @@ fun MainScreen(
             ) { onProgress ->
                 com.example.aniflow.utils.AppUpdater.downloadAndInstall(context, updateInfo!!.updateUrl, updateInfo!!.versionName, onProgress)
             }
+        }
+
+        if (showOnboarding) {
+            val scope = rememberCoroutineScope()
+            FeedbackOnboardingScreen(
+                onDismiss = {
+                    scope.launch {
+                        sStore.setFeedbackOnboardingShown(true)
+                    }
+                }
+            )
         }
     }
 }
@@ -874,6 +896,153 @@ private fun UpdateButton(
             fontSize = if (isPrimary) 16.sp else 14.sp,
             fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.Medium
         )
+    }
+}
+
+@Composable
+fun FeedbackOnboardingScreen(
+    onDismiss: () -> Unit
+) {
+    var visible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val isRedesign = remember { context.packageName.endsWith(".redesign") }
+    val deviceType = com.example.aniflow.LocalDeviceType.current
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        visible = true
+    }
+
+    LaunchedEffect(visible) {
+        if (visible && deviceType == com.example.aniflow.DeviceType.TV) {
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    val executeWithAnimation: (() -> Unit) -> Unit = { callback ->
+        scope.launch {
+            visible = false
+            delay(250L)
+            callback()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                if (isRedesign) {
+                    Color.Black.copy(alpha = 0.85f)
+                } else {
+                    PrimaryDark.copy(alpha = 0.9f)
+                }
+            )
+            .let {
+                if (deviceType != com.example.aniflow.DeviceType.TV) {
+                    it.clickable {
+                        executeWithAnimation { onDismiss() }
+                    }
+                } else {
+                    it
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(300)) + scaleIn(tween(300, easing = androidx.compose.animation.core.EaseInOutCubic), initialScale = 0.8f),
+            exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.8f)
+        ) {
+            val cardModifier = if (isRedesign) {
+                Modifier
+                    .widthIn(max = 440.dp)
+                    .padding(24.dp)
+                    .glassSurface(shape = RoundedCornerShape(20.dp))
+                    .let {
+                        if (deviceType != com.example.aniflow.DeviceType.TV) {
+                            it.clickable(enabled = false) {}
+                        } else {
+                            it
+                        }
+                    }
+            } else {
+                Modifier
+                    .widthIn(max = 440.dp)
+                    .padding(24.dp)
+                    .let {
+                        if (deviceType != com.example.aniflow.DeviceType.TV) {
+                            it.clickable(enabled = false) {}
+                        } else {
+                            it
+                        }
+                    }
+            }
+
+            Surface(
+                modifier = cardModifier,
+                shape = RoundedCornerShape(20.dp),
+                color = if (isRedesign) Color(0xFF0F0E17).copy(alpha = 0.98f) else SurfaceCard,
+                tonalElevation = 16.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .background(PrimaryAccent.copy(alpha = 0.15f), shape = androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(36.dp),
+                            tint = PrimaryAccent
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = "Introducing User's Choice!",
+                        color = TextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Share why you love your favorite anime! Open any anime details page, write your reasons, and submit to see them instantly displayed on the global \"User's Choice\" section on the home screen.",
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 20.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    UpdateButton(
+                        text = "Got it!",
+                        isPrimary = true,
+                        isRedesign = isRedesign,
+                        deviceType = deviceType,
+                        modifier = Modifier.focusRequester(focusRequester),
+                        onClick = {
+                            executeWithAnimation { onDismiss() }
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 

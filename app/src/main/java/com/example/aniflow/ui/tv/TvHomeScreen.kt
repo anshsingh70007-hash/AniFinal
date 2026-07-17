@@ -28,6 +28,8 @@ import coil3.compose.AsyncImage
 import com.example.aniflow.data.model.AiringAnime
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.data.model.WatchHistoryEntry
+import com.example.aniflow.data.UserFeedback
+import androidx.compose.ui.text.font.FontStyle
 import com.example.aniflow.theme.*
 
 @Composable
@@ -42,6 +44,7 @@ fun TvHomeScreen(
     actionAnime: List<Anime>,
     romanceAnime: List<Anime>,
     history: List<WatchHistoryEntry>,
+    userFeedbackList: List<UserFeedback>,
     onAnimeClick: (Anime) -> Unit,
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
@@ -95,6 +98,86 @@ fun TvHomeScreen(
                                     )
                                 }
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // User's Choice Row
+        if (userFeedbackList.isNotEmpty()) {
+            item {
+                Column {
+                    Text(
+                        text = "❤️ User's Choice",
+                        color = TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        items(userFeedbackList) { feedback ->
+                            var isFocused by remember { mutableStateOf(false) }
+                            Box(
+                                modifier = Modifier
+                                    .width(320.dp)
+                                    .height(110.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isFocused) PrimaryAccent else SurfaceCard)
+                                    .border(
+                                        width = if (isFocused) 2.dp else 0.dp,
+                                        color = if (isFocused) Color.White else Color.Transparent,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                    .onFocusChanged { isFocused = it.isFocused }
+                                    .clickable {
+                                        onAnimeClick(feedback.anime.toAnime())
+                                    }
+                                    .focusable()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AsyncImage(
+                                        model = feedback.anime.coverImage,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .width(70.dp)
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = feedback.anime.title,
+                                            color = TextPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = "\"${feedback.feedback}\"",
+                                            color = if (isFocused) TextPrimary.copy(alpha = 0.8f) else TextSecondary,
+                                            fontSize = 12.sp,
+                                            fontStyle = FontStyle.Italic,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

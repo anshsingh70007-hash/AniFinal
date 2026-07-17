@@ -1,6 +1,11 @@
 package com.example.aniflow.ui.redesign
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,6 +37,8 @@ import android.annotation.SuppressLint
 import com.example.aniflow.data.model.AiringAnime
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.data.model.WatchHistoryEntry
+import com.example.aniflow.data.UserFeedback
+import androidx.compose.ui.text.font.FontStyle
 import com.example.aniflow.theme.*
 import com.example.aniflow.ui.redesign.components.AmbientBackground
 import com.example.aniflow.ui.redesign.components.GlassCard
@@ -50,10 +58,15 @@ fun RedesignTvHomeScreen(
     actionAnime: List<Anime>,
     romanceAnime: List<Anime>,
     history: List<WatchHistoryEntry>,
+    userFeedbackList: List<UserFeedback>,
     onAnimeClick: (Anime) -> Unit,
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
+    val lazyListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
     LazyColumn(
+        state = lazyListState,
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(28.dp),
         contentPadding = PaddingValues(vertical = 24.dp)
@@ -61,7 +74,18 @@ fun RedesignTvHomeScreen(
             // Spotlight Carousel
             if (trending.isNotEmpty()) {
                 item {
-                    RedesignTvSpotlight(anime = trending.first(), onClick = { onAnimeClick(trending.first()) })
+                    RedesignTvSpotlight(
+                        anime = trending.first(),
+                        onClick = { onAnimeClick(trending.first()) },
+                        onExpandedChanged = { expanded ->
+                            if (expanded) {
+                                coroutineScope.launch {
+                                    // Scroll item 0 (Spotlight) to the top of the LazyColumn
+                                    lazyListState.animateScrollToItem(0)
+                                }
+                            }
+                        }
+                    )
                 }
             }
 
@@ -101,6 +125,79 @@ fun RedesignTvHomeScreen(
                                         )
                                     }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // User's Choice Row
+            if (userFeedbackList.isNotEmpty()) {
+                item {
+                    Column {
+                        Text(
+                            text = "❤️ User's Choice",
+                            color = TextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            items(userFeedbackList) { feedback ->
+                                var isFocused by remember { mutableStateOf(false) }
+                                GlassCard(
+                                    onClick = {
+                                        onAnimeClick(feedback.anime.toAnime())
+                                    },
+                                    modifier = Modifier
+                                        .width(320.dp)
+                                        .height(110.dp)
+                                        .onFocusChanged { isFocused = it.isFocused },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = feedback.anime.coverImage,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .width(70.dp)
+                                                .fillMaxHeight()
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                text = feedback.anime.title,
+                                                color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                text = "\"${feedback.feedback}\"",
+                                                color = GlassTokens.TextMuted,
+                                                fontSize = 12.sp,
+                                                fontStyle = FontStyle.Italic,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                                lineHeight = 15.sp
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -162,23 +259,43 @@ fun RedesignTvHomeScreen(
 @Composable
 fun RedesignTvSpotlight(
     anime: Anime,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onExpandedChanged: (Boolean) -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    var isExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isFocused) {
+        if (isFocused) {
+            delay(1500)
+            isExpanded = true
+            onExpandedChanged(true)
+        } else {
+            isExpanded = false
+            onExpandedChanged(false)
+        }
+    }
+
+    val bannerHeight by animateDpAsState(
+        targetValue = if (isExpanded) 400.dp else 340.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "bannerHeight"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(340.dp)
+            .height(bannerHeight)
             .onFocusChanged { isFocused = it.isFocused }
             .focusGlow(isFocused, RoundedCornerShape(16.dp), focusedScale = 1.02f)
             .glassSurface(RoundedCornerShape(16.dp), isFocused = isFocused)
             .clickable { onClick() }
     ) {
-        if (isFocused && !anime.trailerUrl.isNullOrEmpty()) {
+        if (!anime.trailerUrl.isNullOrEmpty()) {
             BackgroundTrailerPlayer(
                 trailerUrl = anime.trailerUrl,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                isMuted = !isExpanded
             )
         } else {
             AsyncImage(
@@ -251,13 +368,20 @@ fun RedesignTvSpotlight(
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
 fun BackgroundTrailerPlayer(
     trailerUrl: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isMuted: Boolean = true,
+    onVideoEnded: (() -> Unit)? = null
 ) {
     if (trailerUrl.isNullOrEmpty()) return
+
+    val videoId = remember(trailerUrl) {
+        val afterEmbed = trailerUrl.substringAfter("/embed/")
+        afterEmbed.substringBefore("?").substringBefore("/")
+    }
 
     AndroidView(
         factory = { context ->
@@ -274,27 +398,126 @@ fun BackgroundTrailerPlayer(
                     loadWithOverviewMode = true
                     userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 }
+
+                if (onVideoEnded != null) {
+                    addJavascriptInterface(object {
+                        @android.webkit.JavascriptInterface
+                        fun onPlayerStateChange(state: Int) {
+                            if (state == 0) { // ended
+                                post { onVideoEnded() }
+                            }
+                        }
+                    }, "Android")
+                }
+
                 webViewClient = android.webkit.WebViewClient()
                 isClickable = false
                 isFocusable = false
                 setOnTouchListener { _, _ -> true }
                 
-                val html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                    <style>
-                      body { margin: 0; padding: 0; overflow: hidden; background-color: black; }
-                      iframe { border: none; width: 100vw; height: 100vh; pointer-events: none; }
-                    </style>
-                    </head>
-                    <body>
-                      <iframe src="$trailerUrl"></iframe>
-                    </body>
-                    </html>
-                """.trimIndent()
-                loadDataWithBaseURL("https://www.youtube.com", html, "text/html", "UTF-8", null)
+                if (trailerUrl.contains("youtube")) {
+                    val html = """
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                        <style>
+                          body { margin: 0; padding: 0; overflow: hidden; background-color: black; }
+                          #player { width: 100vw; height: 100vh; pointer-events: none; }
+                        </style>
+                        </head>
+                        <body>
+                          <div id="player"></div>
+                          <script>
+                            var tag = document.createElement('script');
+                            tag.src = "https://www.youtube.com/iframe_api";
+                            var firstScriptTag = document.getElementsByTagName('script')[0];
+                            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+                            var player;
+                            function onYouTubeIframeAPIReady() {
+                              player = new YT.Player('player', {
+                                height: '100%',
+                                width: '100%',
+                                videoId: '$videoId',
+                                playerVars: {
+                                  'autoplay': 1,
+                                  'mute': ${if (isMuted) 1 else 0},
+                                  'controls': 0,
+                                  'showinfo': 0,
+                                  'rel': 0,
+                                  'loop': 0,
+                                  'playlist': '$videoId',
+                                  'modestbranding': 1,
+                                  'disablekb': 1,
+                                  'enablejsapi': 1,
+                                  'origin': 'https://www.youtube-nocookie.com'
+                                },
+                                events: {
+                                  'onReady': onPlayerReady,
+                                  'onStateChange': onPlayerStateChange
+                                }
+                              });
+                            }
+
+                            function onPlayerReady(event) {
+                              event.target.playVideo();
+                            }
+
+                            function onPlayerStateChange(event) {
+                              if (window.Android) {
+                                window.Android.onPlayerStateChange(event.data);
+                              }
+                            }
+
+                            function setMuted(muted) {
+                              if (player && typeof player.mute === 'function' && typeof player.unMute === 'function') {
+                                if (muted) {
+                                  player.mute();
+                                } else {
+                                  player.unMute();
+                                  player.setVolume(100);
+                                }
+                              }
+                            }
+                          </script>
+                        </body>
+                        </html>
+                    """.trimIndent()
+                    loadDataWithBaseURL("https://www.youtube-nocookie.com", html, "text/html", "UTF-8", null)
+                } else {
+                    val html = """
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                        <style>
+                          body { margin: 0; padding: 0; overflow: hidden; background-color: black; }
+                          iframe { border: none; width: 100vw; height: 100vh; pointer-events: none; }
+                        </style>
+                        </head>
+                        <body>
+                          <iframe src="$trailerUrl" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay"></iframe>
+                        </body>
+                        </html>
+                    """.trimIndent()
+                    loadDataWithBaseURL("https://www.youtube-nocookie.com", html, "text/html", "UTF-8", null)
+                }
             }
+        },
+        update = { webView ->
+            if (!isMuted) {
+                val downTime = android.os.SystemClock.uptimeMillis()
+                val downEvent = android.view.MotionEvent.obtain(
+                    downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 50f, 50f, 0
+                )
+                val upEvent = android.view.MotionEvent.obtain(
+                    downTime, downTime + 50, android.view.MotionEvent.ACTION_UP, 50f, 50f, 0
+                )
+                webView.dispatchTouchEvent(downEvent)
+                webView.dispatchTouchEvent(upEvent)
+                downEvent.recycle()
+                upEvent.recycle()
+            }
+            webView.evaluateJavascript("if (typeof setMuted === 'function') { setMuted($isMuted); }", null)
         },
         modifier = modifier
     )
