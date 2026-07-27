@@ -1,7 +1,7 @@
 {
   "versionCode": 50,
   "versionName": "1.8.5",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.5-redesign.apk",
+  "updateUrl": "https://media.githubusercontent.com/media/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.5-redesign.apk",
   "updateNotes": "Bug fixes only: resolved disappearing feedbacks, fixed video player load delay, corrected TV browse scrolling layouts, fixed missing episode listings, and restored continue watching resumes.",
   "forceUpdate": false,
   "silentUpdate": false
