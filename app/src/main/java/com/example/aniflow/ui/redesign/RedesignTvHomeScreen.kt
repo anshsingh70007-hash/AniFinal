@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
@@ -100,12 +101,24 @@ fun RedesignTvHomeScreen(
             if (airing.isNotEmpty()) {
                 item {
                     Column {
-                        Text(
-                            "📡 Airing Today",
-                            color = TextPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(4.dp)
+                                    .height(22.dp)
+                                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+                            )
+                            Text(
+                                "📡 Airing Today",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -135,12 +148,24 @@ fun RedesignTvHomeScreen(
             if (userFeedbackList.isNotEmpty()) {
                 item {
                     Column {
-                        Text(
-                            text = "❤️ User's Choice",
-                            color = TextPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(4.dp)
+                                    .height(22.dp)
+                                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+                            )
+                            Text(
+                                text = "❤️ User's Choice",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -383,144 +408,164 @@ fun BackgroundTrailerPlayer(
         afterEmbed.substringBefore("?").substringBefore("/")
     }
 
-    AndroidView(
-        factory = { context ->
-            android.webkit.WebView(context).apply {
-                layoutParams = android.view.ViewGroup.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                settings.apply {
-                    javaScriptEnabled = true
-                    mediaPlaybackRequiresUserGesture = false
-                    domStorageEnabled = true
-                    useWideViewPort = true
-                    loadWithOverviewMode = true
-                    userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
+    var isVideoPlaying by remember { mutableStateOf(false) }
+    val alpha by animateFloatAsState(
+        targetValue = if (isVideoPlaying) 1f else 0f,
+        animationSpec = tween(durationMillis = 800, easing = androidx.compose.animation.core.EaseInOut),
+        label = "trailerFadeIn"
+    )
 
-                if (onVideoEnded != null) {
+    Box(modifier = modifier) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+
+        AndroidView(
+            factory = { context ->
+                android.webkit.WebView(context).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+
+                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+
+                    settings.apply {
+                        javaScriptEnabled = true
+                        mediaPlaybackRequiresUserGesture = false
+                        domStorageEnabled = true
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
+
                     addJavascriptInterface(object {
                         @android.webkit.JavascriptInterface
                         fun onPlayerStateChange(state: Int) {
-                            if (state == 0) { // ended
+                            if (state == 1) { // PLAYING
+                                post { isVideoPlaying = true }
+                            }
+                            if (state == 0 && onVideoEnded != null) { // ENDED
                                 post { onVideoEnded() }
                             }
                         }
                     }, "Android")
-                }
 
-                webViewClient = android.webkit.WebViewClient()
-                isClickable = false
-                isFocusable = false
-                setOnTouchListener { _, _ -> true }
-                
-                if (trailerUrl.contains("youtube")) {
-                    val html = """
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                        <style>
-                          body { margin: 0; padding: 0; overflow: hidden; background-color: black; }
-                          #player { width: 100vw; height: 100vh; pointer-events: none; }
-                        </style>
-                        </head>
-                        <body>
-                          <div id="player"></div>
-                          <script>
-                            var tag = document.createElement('script');
-                            tag.src = "https://www.youtube.com/iframe_api";
-                            var firstScriptTag = document.getElementsByTagName('script')[0];
-                            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+                    webChromeClient = object : android.webkit.WebChromeClient() {}
 
-                            var player;
-                            function onYouTubeIframeAPIReady() {
-                              player = new YT.Player('player', {
-                                height: '100%',
-                                width: '100%',
-                                videoId: '$videoId',
-                                playerVars: {
-                                  'autoplay': 1,
-                                  'mute': ${if (isMuted) 1 else 0},
-                                  'controls': 0,
-                                  'showinfo': 0,
-                                  'rel': 0,
-                                  'loop': 0,
-                                  'playlist': '$videoId',
-                                  'modestbranding': 1,
-                                  'disablekb': 1,
-                                  'enablejsapi': 1,
-                                  'origin': 'https://www.youtube-nocookie.com'
-                                },
-                                events: {
-                                  'onReady': onPlayerReady,
-                                  'onStateChange': onPlayerStateChange
-                                }
-                              });
-                            }
+                    webViewClient = object : android.webkit.WebViewClient() {
+                        override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            view?.evaluateJavascript("""
+                                (function() {
+                                    var style = document.createElement('style');
+                                    style.textContent = '.ytp-chrome-top, .ytp-chrome-bottom, .ytp-watermark, .ytp-show-cards-title, .ytp-pause-overlay, .ytp-gradient-top, .ytp-gradient-bottom { display: none !important; opacity: 0 !important; }';
+                                    document.head.appendChild(style);
+                                })();
+                            """.trimIndent(), null)
+                        }
+                    }
 
-                            function onPlayerReady(event) {
-                              event.target.playVideo();
-                            }
+                    isClickable = false
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    setOnTouchListener { _, _ -> true }
+                    setBackgroundColor(android.graphics.Color.BLACK)
 
-                            function onPlayerStateChange(event) {
-                              if (window.Android) {
-                                window.Android.onPlayerStateChange(event.data);
+                    if (trailerUrl.contains("youtube")) {
+                        val html = """
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                            <style>
+                              * { margin: 0; padding: 0; }
+                              body { overflow: hidden; background-color: #000000; }
+                              #player { width: 100vw; height: 100vh; pointer-events: none; }
+                              .ytp-chrome-top, .ytp-chrome-bottom, .ytp-watermark,
+                              .ytp-show-cards-title, .ytp-pause-overlay,
+                              .ytp-gradient-top, .ytp-gradient-bottom {
+                                  display: none !important;
+                                  opacity: 0 !important;
                               }
-                            }
+                            </style>
+                            </head>
+                            <body>
+                              <div id="player"></div>
+                              <script>
+                                var tag = document.createElement('script');
+                                tag.src = "https://www.youtube.com/iframe_api";
+                                var firstScriptTag = document.getElementsByTagName('script')[0];
+                                firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-                            function setMuted(muted) {
-                              if (player && typeof player.mute === 'function' && typeof player.unMute === 'function') {
-                                if (muted) {
-                                  player.mute();
-                                } else {
-                                  player.unMute();
-                                  player.setVolume(100);
+                                var player;
+                                function onYouTubeIframeAPIReady() {
+                                  player = new YT.Player('player', {
+                                    height: '100%',
+                                    width: '100%',
+                                    videoId: '$videoId',
+                                    playerVars: {
+                                      'autoplay': 1,
+                                      'mute': ${if (isMuted) 1 else 0},
+                                      'controls': 0,
+                                      'showinfo': 0,
+                                      'rel': 0,
+                                      'loop': 0,
+                                      'playlist': '$videoId',
+                                      'modestbranding': 1,
+                                      'disablekb': 1,
+                                      'enablejsapi': 1,
+                                      'iv_load_policy': 3,
+                                      'cc_load_policy': 0,
+                                      'playsinline': 1,
+                                      'origin': 'https://www.youtube-nocookie.com'
+                                    },
+                                    events: {
+                                      'onReady': onPlayerReady,
+                                      'onStateChange': onPlayerStateChange
+                                    }
+                                  });
                                 }
-                              }
-                            }
-                          </script>
-                        </body>
-                        </html>
-                    """.trimIndent()
-                    loadDataWithBaseURL("https://www.youtube-nocookie.com", html, "text/html", "UTF-8", null)
-                } else {
-                    val html = """
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                        <style>
-                          body { margin: 0; padding: 0; overflow: hidden; background-color: black; }
-                          iframe { border: none; width: 100vw; height: 100vh; pointer-events: none; }
-                        </style>
-                        </head>
-                        <body>
-                          <iframe src="$trailerUrl" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay"></iframe>
-                        </body>
-                        </html>
-                    """.trimIndent()
-                    loadDataWithBaseURL("https://www.youtube-nocookie.com", html, "text/html", "UTF-8", null)
+
+                                function onPlayerReady(event) {
+                                  event.target.playVideo();
+                                }
+
+                                function onPlayerStateChange(event) {
+                                  if (window.Android) {
+                                    window.Android.onPlayerStateChange(event.data);
+                                  }
+                                }
+
+                                function setMuted(muted) {
+                                  if (player && typeof player.mute === 'function') {
+                                    if (muted) player.mute();
+                                    else { player.unMute(); player.setVolume(100); }
+                                  }
+                                }
+                              </script>
+                            </body>
+                            </html>
+                        """.trimIndent()
+                        loadDataWithBaseURL("https://www.youtube-nocookie.com", html, "text/html", "UTF-8", null)
+                    } else {
+                        val html = """
+                            <!DOCTYPE html><html><head>
+                            <style>body{margin:0;padding:0;overflow:hidden;background:#000}
+                            iframe{border:none;width:100vw;height:100vh;pointer-events:none}</style>
+                            </head><body>
+                            <iframe src="$trailerUrl" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay"></iframe>
+                            </body></html>
+                        """.trimIndent()
+                        loadDataWithBaseURL("https://www.youtube-nocookie.com", html, "text/html", "UTF-8", null)
+                    }
                 }
-            }
-        },
-        update = { webView ->
-            if (!isMuted) {
-                val downTime = android.os.SystemClock.uptimeMillis()
-                val downEvent = android.view.MotionEvent.obtain(
-                    downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 50f, 50f, 0
-                )
-                val upEvent = android.view.MotionEvent.obtain(
-                    downTime, downTime + 50, android.view.MotionEvent.ACTION_UP, 50f, 50f, 0
-                )
-                webView.dispatchTouchEvent(downEvent)
-                webView.dispatchTouchEvent(upEvent)
-                downEvent.recycle()
-                upEvent.recycle()
-            }
-            webView.evaluateJavascript("if (typeof setMuted === 'function') { setMuted($isMuted); }", null)
-        },
-        modifier = modifier
-    )
+            },
+            update = { webView ->
+                webView.evaluateJavascript("if (typeof setMuted === 'function') { setMuted($isMuted); }", null)
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { this.alpha = alpha }
+        )
+    }
 }
 
 @Composable
@@ -530,12 +575,24 @@ fun RedesignTvSectionRow(
     onAnimeClick: (Anime) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(22.dp)
+                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+            )
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
         Spacer(Modifier.height(10.dp))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -551,13 +608,13 @@ fun RedesignTvSectionRow(
 @Composable
 fun RedesignTvPosterCard(
     anime: Anime,
+    modifier: Modifier = Modifier.width(140.dp),
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
     Box(
-        modifier = Modifier
-            .width(140.dp)
+        modifier = modifier
             .onFocusChanged { isFocused = it.isFocused }
             .focusGlow(isFocused, RoundedCornerShape(12.dp))
             .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
@@ -676,12 +733,24 @@ fun RedesignTvContinueWatchingRow(
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(22.dp)
+                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+            )
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
         Spacer(Modifier.height(10.dp))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),

@@ -11,6 +11,7 @@ data class Anime(
     val bannerImage: String? = null,
     val description: String? = null,
     val episodes: Int? = null,
+    val format: String? = null,
     val averageScore: Int? = null,
     val genres: List<String> = emptyList(),
     val status: String = "FINISHED",

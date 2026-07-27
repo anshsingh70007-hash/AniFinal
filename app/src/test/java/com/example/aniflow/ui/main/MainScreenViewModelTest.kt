@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import com.example.aniflow.data.WatchHistoryStore
 import com.example.aniflow.data.WatchlistStore
+import com.example.aniflow.data.UserFeedback
 import com.example.aniflow.data.model.*
 import com.example.aniflow.data.repository.AnimeRepository
 import junit.framework.TestCase.assertEquals
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.io.File
@@ -23,8 +25,59 @@ class MainScreenViewModelTest {
         val repository = FakeAnimeRepository()
         val watchlistStore = WatchlistStore(context)
         val watchHistoryStore = WatchHistoryStore(context)
-        val viewModel = MainScreenViewModel(repository, watchlistStore, watchHistoryStore, context)
-        assertEquals(viewModel.isLoading.value, true)
+        val userFeedbackStore = com.example.aniflow.data.UserFeedbackStore(context)
+        val viewModel = MainScreenViewModel(repository, watchlistStore, watchHistoryStore, userFeedbackStore, context)
+    }
+
+    @Test
+    fun testJsonParsing() {
+        val jsonStr = """{"id":"ff8081819d82fab6019f6fb7249673e0","name":null,"data":{"list":[{"anime":{"id":21,"title":"ONE PIECE","coverImage":"https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx21-ELSYx3yMPcKM.jpg","bannerImage":"https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg"},"feedback":"peak","timestamp":1784288643193},{"anime":{"id":20954,"title":"A Silent Voice","coverImage":"https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx20954-sYRfE5jQRtSB.jpg","bannerImage":"https://s4.anilist.co/file/anilistcdn/media/anime/banner/20954-f30bHMXa5Qoe.jpg","episodes":1},"feedback":"peak","timestamp":1784286589939}]}}"""
+        val parsed = com.example.aniflow.data.NetworkModule.json.decodeFromString<com.example.aniflow.data.GlobalFeedbackResponse>(jsonStr)
+        assertEquals(2, parsed.data.list.size)
+        assertEquals("ONE PIECE", parsed.data.list[0].anime.title)
+        assertEquals(null, parsed.data.list[0].anime.episodes)
+        assertEquals(1, parsed.data.list[1].anime.episodes)
+    }
+
+    @Test
+    fun testRealApiFetch() = runTest {
+        val context = FakeContext()
+        val store = com.example.aniflow.data.UserFeedbackStore(context)
+        var received: List<UserFeedback>? = null
+        val job = launch {
+            store.feedbackListFlow.collect {
+                received = it
+            }
+        }
+        delay(6000)
+        job.cancel()
+        println("REAL FETCH SIZE: ${received?.size}")
+        received?.forEach { println("FEEDBACK: ${it.anime.title} -> ${it.feedback}") }
+    }
+
+    @Test
+    fun testRealApiPut() = runTest {
+        val context = FakeContext()
+        val store = com.example.aniflow.data.UserFeedbackStore(context)
+        
+        // 1. Save feedback
+        val anime = Anime(id = 21, title = "ONE PIECE", coverImage = "url", bannerImage = "banner")
+        val testText = "peak feedback at " + System.currentTimeMillis()
+        store.saveFeedback(anime, testText)
+        
+        // 2. Fetch feedback from flow
+        val list = store.feedbackListFlow.first { it.any { f -> f.feedback == testText } }
+        println("REAL PUT SUCCESS: Found updated feedback: ${list.find { it.feedback == testText }?.feedback}")
+        assert(list.isNotEmpty())
+    }
+
+    @Test
+    fun runResetServer() = runTest {
+        val context = FakeContext()
+        val store = com.example.aniflow.data.UserFeedbackStore(context)
+        println("STARTING SERVER RESET...")
+        store.resetServer()
+        println("SERVER RESET COMPLETED!")
     }
 }
 

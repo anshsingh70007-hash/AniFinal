@@ -9,6 +9,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.async
 import java.util.Calendar
 import java.util.LinkedHashMap
 
@@ -21,14 +22,16 @@ class AniListApi(private val client: HttpClient) {
         }
     }
     private val CACHE_TTL_MS = 5 * 60 * 1000L
+    private val inFlightRequests = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<JsonObject?>>()
 
     private val MEDIA_FIELDS = """
         id
-        title { romaji english }
+        title { romaji english native }
         coverImage { extraLarge large }
         bannerImage
         description
         episodes
+        format
         averageScore
         genres
         status
@@ -36,23 +39,46 @@ class AniListApi(private val client: HttpClient) {
         seasonYear
         studios(isMain: true) { nodes { name } }
         trailer { id site thumbnail }
+        nextAiringEpisode { episode airingAt }
+        relations {
+            edges {
+                relationType(version: 2)
+                node {
+                    id
+                    title { romaji english }
+                    format
+                    status
+                    episodes
+                }
+            }
+        }
     """.trimIndent()
 
-    private suspend fun queryAniList(query: String, variables: JsonObject): JsonObject? {
+    private suspend fun queryAniList(query: String, variables: JsonObject): JsonObject? = kotlinx.coroutines.coroutineScope {
+        val scope = this
         val cacheKey = "$query|$variables"
         synchronized(cache) {
             val cached = cache[cacheKey]
             if (cached != null && System.currentTimeMillis() - cached.first < CACHE_TTL_MS) {
-                return cached.second
+                return@coroutineScope cached.second
             }
         }
-        val result = queryAniListFromApi(query, variables)
-        if (result != null) {
-            synchronized(cache) {
-                cache[cacheKey] = System.currentTimeMillis() to result
+        val deferred = inFlightRequests.getOrPut(cacheKey) {
+            scope.async(kotlinx.coroutines.Dispatchers.IO) {
+                val result = queryAniListFromApi(query, variables)
+                if (result != null) {
+                    synchronized(cache) {
+                        cache[cacheKey] = System.currentTimeMillis() to result
+                    }
+                }
+                result
             }
         }
-        return result
+        try {
+            deferred.await()
+        } finally {
+            inFlightRequests.remove(cacheKey)
+        }
     }
 
     private suspend fun queryAniListFromApi(query: String, variables: JsonObject): JsonObject? {
@@ -72,9 +98,10 @@ class AniListApi(private val client: HttpClient) {
                     val responseBody = response.bodyAsText()
                     return json.parseToJsonElement(responseBody).jsonObject
                 } else if (response.status.value == 429) {
-                    // Rate limited — wait before retrying
-                    android.util.Log.w("AniListApi", "Rate limited (429), waiting before retry $attempt")
-                    kotlinx.coroutines.delay(attempt * 2000L)
+                    val retryAfter = response.headers["Retry-After"]?.toLongOrNull() ?: (attempt * 2000L)
+                    val waitMs = if (retryAfter < 100) retryAfter * 1000L else retryAfter
+                    android.util.Log.w("AniListApi", "Rate limited (429), waiting $waitMs ms before retry $attempt")
+                    kotlinx.coroutines.delay(waitMs)
                     continue
                 } else {
                     android.util.Log.e("AniListApi", "Failed with status: ${response.status}, body: ${response.bodyAsText()}")
@@ -390,6 +417,12 @@ class AniListApi(private val client: HttpClient) {
             e.printStackTrace()
         }
 
+        val format = mediaObj["format"]?.jsonPrimitive?.contentOrNull
+
+        val nextAiringObj = mediaObj["nextAiringEpisode"] as? JsonObject
+        val nextAiringEp = nextAiringObj?.get("episode")?.jsonPrimitive?.intOrNull
+        val nextAiringAt = nextAiringObj?.get("airingAt")?.jsonPrimitive?.longOrNull
+
         return Anime(
             id = mediaObj["id"]?.jsonPrimitive?.int ?: 0,
             title = titleObj?.get("english")?.jsonPrimitive?.contentOrNull
@@ -400,12 +433,15 @@ class AniListApi(private val client: HttpClient) {
             bannerImage = mediaObj["bannerImage"]?.jsonPrimitive?.contentOrNull,
             description = mediaObj["description"]?.jsonPrimitive?.contentOrNull,
             episodes = mediaObj["episodes"]?.jsonPrimitive?.intOrNull,
+            format = format,
             averageScore = mediaObj["averageScore"]?.jsonPrimitive?.intOrNull,
             genres = genresList,
             status = mediaObj["status"]?.jsonPrimitive?.content ?: "FINISHED",
             season = mediaObj["season"]?.jsonPrimitive?.contentOrNull,
             seasonYear = mediaObj["seasonYear"]?.jsonPrimitive?.intOrNull,
             studioName = studioName,
+            nextAiringEpisode = nextAiringEp,
+            nextAiringAt = nextAiringAt,
             trailerUrl = trailerUrl,
             recommendations = recommendationsList
         )

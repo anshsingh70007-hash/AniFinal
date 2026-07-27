@@ -120,9 +120,8 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             .replace(Regex("(?i):.*"), "")
             .replace(Regex("(?i)Season\\s*\\d+"), "")
             .replace(Regex("(?i)Part\\s*\\d+"), "")
-            .replace(Regex("(?i)TV"), "")
-            .replace(Regex("(?i)Uncensored"), "")
-            .replace(Regex("(?i)Specials?"), "")
+            .replace(Regex("(?i)\\bTV\\b"), "")
+            .replace(Regex("(?i)\\bUncensored\\b"), "")
             .trim()
     }
 
@@ -156,12 +155,27 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             return 10.0 // Authoritative match
         }
 
-        // Format validation
         val lowerCandidate = candidate.title.lowercase()
+        val identityFormat = identity.format?.uppercase()
+
+        // Format mismatch detection — expanded beyond just MOVIE
         val isMovieCandidate = lowerCandidate.contains("movie") || lowerCandidate.contains("film")
-        val isMovieIdentity = identity.format?.uppercase() == "MOVIE"
-        if (isMovieCandidate != isMovieIdentity) {
-            return 0.0 // Format mismatch
+        val isOvaCandidate = lowerCandidate.contains("ova") || lowerCandidate.contains("oav")
+        val isSpecialCandidate = lowerCandidate.contains("special") || lowerCandidate.contains("specials")
+        val isOnaCandidate = lowerCandidate.contains("ona")
+
+        // Penalize format mismatches
+        when (identityFormat) {
+            "MOVIE" -> if (!isMovieCandidate && (isOvaCandidate || isSpecialCandidate)) return 0.0
+            "TV", "TV_SHORT" -> if (isMovieCandidate || isOvaCandidate || isSpecialCandidate) return 0.0
+            "OVA" -> if (isMovieCandidate || (!isOvaCandidate && !lowerCandidate.contains(identity.title.lowercase().take(8)))) return 0.05
+            "SPECIAL" -> if (isMovieCandidate || isOvaCandidate) return 0.0
+            "ONA" -> if (isMovieCandidate) return 0.0
+        }
+
+        // Also penalize if identity is NOT a movie but candidate IS a movie
+        if (identityFormat != "MOVIE" && isMovieCandidate) {
+            return 0.0
         }
 
         // Season validation
@@ -375,6 +389,20 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
         }
         return response
     }
+
+    fun healWatchCache() {
+        val now = System.currentTimeMillis()
+        synchronized(watchCache) {
+            val iterator = watchCache.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (now - entry.value.second > CACHE_TTL_MS) {
+                    iterator.remove()
+                }
+            }
+        }
+    }
+
 
     suspend fun search(query: String): List<ProviderSearchResult> {
         return try {

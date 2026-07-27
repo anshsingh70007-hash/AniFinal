@@ -23,13 +23,23 @@ sealed class DetailUiState {
 
 class DetailViewModel(
     private val repository: AnimeRepository,
-    private val providerMappingStore: ProviderMappingStore
+    private val providerMappingStore: ProviderMappingStore,
+    private val watchHistoryStore: com.example.aniflow.data.WatchHistoryStore
 ) : ViewModel() {
     val uiState = MutableStateFlow<DetailUiState>(DetailUiState.Loading)
+    val watchHistoryEntry = MutableStateFlow<WatchHistoryEntry?>(null)
     
     private var loadJob: Job? = null
+    private var historyJob: Job? = null
 
     fun loadAnimeDetails(animeId: Int) {
+        historyJob?.cancel()
+        historyJob = viewModelScope.launch {
+            watchHistoryStore.historyFlow.collect { historyList ->
+                watchHistoryEntry.value = historyList.firstOrNull { it.animeId == animeId }
+            }
+        }
+
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             uiState.value = DetailUiState.Loading
@@ -54,15 +64,29 @@ class DetailViewModel(
             englishTitle = anime.englishTitle,
             nativeTitle = null,
             seasonYear = anime.seasonYear,
-            format = if (anime.episodes == 1) "MOVIE" else "TV"
+            format = anime.format ?: if (anime.episodes == 1) "MOVIE" else "TV",
+            expectedEpisodes = anime.episodes
         )
         val result = repository.getEpisodes(identity)
         when (result) {
             is EpisodeLookupResult.Matched -> {
-                if (result.episodes.isEmpty()) {
+                var episodes = result.episodes
+                
+                // For RELEASING anime, filter out episodes that haven't aired yet
+                if (anime.status == "RELEASING" && anime.nextAiringEpisode != null) {
+                    val maxAvailableEp = anime.nextAiringEpisode - 1
+                    if (maxAvailableEp > 0) {
+                        episodes = episodes.filter { it.number <= maxAvailableEp }
+                    }
+                }
+
+                // Deduplicate and sort
+                episodes = episodes.distinctBy { it.number }.sortedBy { it.number }
+
+                if (episodes.isEmpty()) {
                     uiState.value = DetailUiState.Empty(anime)
                 } else {
-                    uiState.value = DetailUiState.Success(anime, result.episodes)
+                    uiState.value = DetailUiState.Success(anime, episodes)
                 }
             }
             is EpisodeLookupResult.Ambiguous -> {

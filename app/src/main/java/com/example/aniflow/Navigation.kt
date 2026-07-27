@@ -2,10 +2,12 @@ package com.example.aniflow
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.example.aniflow.data.SelfHealingEngine
 import com.example.aniflow.data.repository.DefaultAnimeRepository
 import com.example.aniflow.ui.detail.DetailScreen
 import com.example.aniflow.ui.main.MainScreen
@@ -17,6 +19,15 @@ fun MainNavigation() {
     val context = LocalContext.current
     val deviceType = LocalDeviceType.current
     val repository = remember { DefaultAnimeRepository(context.applicationContext) }
+    
+    DisposableEffect(repository) {
+        val engine = SelfHealingEngine(repository)
+        engine.start()
+        onDispose {
+            engine.stop()
+        }
+    }
+
     val watchlistStore = remember { com.example.aniflow.data.WatchlistStore(context) }
     val watchHistoryStore = remember { com.example.aniflow.data.WatchHistoryStore(context) }
     val settingsStore = remember { com.example.aniflow.data.SettingsStore(context) }
@@ -48,6 +59,7 @@ fun MainNavigation() {
                         repository = repository,
                         deviceType = deviceType,
                         watchlistStore = watchlistStore,
+                        watchHistoryStore = watchHistoryStore,
                         userFeedbackStore = userFeedbackStore,
                         onEpisodeClick = { epNum ->
                             backStack.add(Player(detailKey.animeId, epNum))
@@ -63,6 +75,7 @@ fun MainNavigation() {
                         repository = repository,
                         deviceType = deviceType,
                         watchlistStore = watchlistStore,
+                        watchHistoryStore = watchHistoryStore,
                         userFeedbackStore = userFeedbackStore,
                         onEpisodeClick = { epNum ->
                             backStack.add(Player(detailKey.animeId, epNum))

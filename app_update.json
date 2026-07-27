@@ -1,8 +1,8 @@
 {
-  "versionCode": 49,
-  "versionName": "1.8.4",
-  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/1.8.4/releases/AniFinal_1.8.4-redesign.apk",
-  "updateNotes": "This update fixes the User's Choice section on the homepage and resolves the internet/serialization crashes. It also adds unmuted high-quality trailer audio on Android TV when hovered, and introduces a one-time onboarding popup helper to explain how to share feedback.",
+  "versionCode": 50,
+  "versionName": "1.8.5",
+  "updateUrl": "https://raw.githubusercontent.com/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.5-redesign.apk",
+  "updateNotes": "Bug fixes only: resolved disappearing feedbacks, fixed video player load delay, corrected TV browse scrolling layouts, fixed missing episode listings, and restored continue watching resumes.",
   "forceUpdate": false,
   "silentUpdate": false
 }

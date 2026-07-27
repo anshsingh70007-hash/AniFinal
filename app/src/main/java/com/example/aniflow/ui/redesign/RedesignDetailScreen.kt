@@ -55,12 +55,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 
 
+import com.example.aniflow.data.WatchHistoryStore
+
 @Composable
 fun RedesignDetailScreen(
     animeId: Int,
     repository: AnimeRepository,
     deviceType: DeviceType,
     watchlistStore: WatchlistStore,
+    watchHistoryStore: WatchHistoryStore,
     userFeedbackStore: UserFeedbackStore,
     onEpisodeClick: (Int) -> Unit,
     onAnimeClick: (Int) -> Unit,
@@ -68,7 +71,7 @@ fun RedesignDetailScreen(
 ) {
     val context = LocalContext.current
     val viewModel: DetailViewModel = viewModel {
-        DetailViewModel(repository, ProviderMappingStore(context.applicationContext))
+        DetailViewModel(repository, ProviderMappingStore(context.applicationContext), watchHistoryStore)
     }
 
     LaunchedEffect(animeId) {
@@ -76,6 +79,7 @@ fun RedesignDetailScreen(
     }
 
     val uiState by viewModel.uiState.collectAsState()
+    val watchHistoryEntry by viewModel.watchHistoryEntry.collectAsState()
     val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
     val userFeedbackText by userFeedbackStore.getFeedbackForAnimeFlow(animeId).collectAsState(initial = null)
     var showFeedbackDialog by remember { mutableStateOf(false) }
@@ -341,7 +345,8 @@ fun RedesignDetailScreen(
                                                 watchlistStore = watchlistStore,
                                                 currentAnime = currentAnime,
                                                 coroutineScope = coroutineScope,
-                                                onLeaveFeedback = { showFeedbackDialog = true }
+                                                onLeaveFeedback = { showFeedbackDialog = true },
+                                                watchHistoryEntry = watchHistoryEntry
                                             )
                                         }
                                     }
@@ -470,7 +475,8 @@ fun RedesignDetailScreen(
                                         watchlistStore = watchlistStore,
                                         currentAnime = currentAnime,
                                         coroutineScope = coroutineScope,
-                                        onLeaveFeedback = { showFeedbackDialog = true }
+                                        onLeaveFeedback = { showFeedbackDialog = true },
+                                        watchHistoryEntry = watchHistoryEntry
                                     )
                                 }
                             }
@@ -676,13 +682,16 @@ private fun ActionButtonsRow(
     watchlistStore: WatchlistStore,
     currentAnime: Anime,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
-    onLeaveFeedback: () -> Unit
+    onLeaveFeedback: () -> Unit,
+    watchHistoryEntry: com.example.aniflow.data.model.WatchHistoryEntry?
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         var isPlayFocused by remember { mutableStateOf(false) }
+        val targetEp = watchHistoryEntry?.episodeNumber ?: if (episodes.isNotEmpty()) episodes.first().number else 1
+        val buttonLabel = if (watchHistoryEntry != null) "Continue Ep ${watchHistoryEntry.episodeNumber}" else "Play Episode 1"
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -691,11 +700,7 @@ private fun ActionButtonsRow(
                 .focusGlow(isPlayFocused, RoundedCornerShape(24.dp), focusedScale = 1.02f)
                 .glassSurface(RoundedCornerShape(24.dp), isFocused = isPlayFocused)
                 .clickable {
-                    if (episodes.isNotEmpty()) {
-                        onEpisodeClick(episodes.first().number)
-                    } else {
-                        onEpisodeClick(1)
-                    }
+                    onEpisodeClick(targetEp)
                 }
                 .focusable(),
             contentAlignment = Alignment.Center
@@ -708,7 +713,7 @@ private fun ActionButtonsRow(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = "Play Episode 1",
+                    text = buttonLabel,
                     color = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp

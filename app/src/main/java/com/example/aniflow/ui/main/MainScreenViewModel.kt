@@ -84,8 +84,12 @@ class MainScreenViewModel(
 
     private fun observeUserFeedback() {
         viewModelScope.launch {
-            userFeedbackStore.feedbackListFlow.collect { list ->
-                _userFeedbackList.value = list.sortedByDescending { it.timestamp }
+            try {
+                userFeedbackStore.feedbackListFlow.collect { list ->
+                    _userFeedbackList.value = list.sortedByDescending { it.timestamp }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainScreenViewModel", "Failed to observe user feedback", e)
             }
         }
     }
@@ -101,6 +105,11 @@ class MainScreenViewModel(
                     android.util.Log.d("MainScreenViewModel", "Periodic schedule refresh successful: ${airing.size} airing, ${recent.size} recent")
                 } catch (e: Exception) {
                     android.util.Log.e("MainScreenViewModel", "Periodic schedule refresh failed", e)
+                }
+                try {
+                    userFeedbackStore.refresh()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainScreenViewModel", "Periodic feedback refresh failed", e)
                 }
             }
         }

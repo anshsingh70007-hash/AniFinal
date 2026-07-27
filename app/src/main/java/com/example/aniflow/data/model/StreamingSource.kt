@@ -89,7 +89,8 @@ data class AnimeIdentity(
     val englishTitle: String? = null,
     val nativeTitle: String? = null,
     val seasonYear: Int? = null,
-    val format: String? = null // MOVIE, TV, etc.
+    val format: String? = null, // MOVIE, TV, etc.
+    val expectedEpisodes: Int? = null
 )
 
 @Serializable

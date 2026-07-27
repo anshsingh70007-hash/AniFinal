@@ -51,7 +51,15 @@ class ProviderMappingStore(private val context: Context) {
         val key = getMappingKey(provider, anilistId)
         val jsonStr = prefs[key] ?: return null
         return try {
-            json.decodeFromString<ProviderMapping>(jsonStr)
+            val mapping = json.decodeFromString<ProviderMapping>(jsonStr)
+            val now = System.currentTimeMillis()
+            if (now - mapping.evidence.timestamp > 7 * 24 * 60 * 60 * 1000L) {
+                android.util.Log.d("ProviderMappingStore", "Self-Heal: Evicting stale mapping for provider: $provider, anilistId: $anilistId (7 day TTL expired)")
+                invalidateMapping(provider, anilistId)
+                null
+            } else {
+                mapping
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null

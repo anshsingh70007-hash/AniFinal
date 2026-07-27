@@ -175,7 +175,7 @@ fun MainScreen(
                                                 history = history,
                                                 userFeedbackList = userFeedbackList,
                                                 onAnimeClick = { onItemClick(Detail(it.id)) },
-                                                onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
+                                                onHistoryClick = { onItemClick(Detail(it.animeId)) }
                                             )
                                             1 -> RedesignTvBrowseScreen(
                                                 query = searchQuery,
@@ -214,7 +214,7 @@ fun MainScreen(
                                                 history = history,
                                                 userFeedbackList = userFeedbackList,
                                                 onAnimeClick = { onItemClick(Detail(it.id)) },
-                                                onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
+                                                onHistoryClick = { onItemClick(Detail(it.animeId)) }
                                             )
                                             1 -> TvBrowseScreen(
                                                 query = searchQuery,
@@ -464,7 +464,7 @@ fun MainScreen(
                                         history = history,
                                         userFeedbackList = userFeedbackList,
                                         onAnimeClick = { onItemClick(Detail(it.id)) },
-                                        onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
+                                        onHistoryClick = { onItemClick(Detail(it.animeId)) }
                                     )
                                     1 -> RedesignPhoneBrowseScreen(
                                         query = searchQuery,
@@ -503,7 +503,7 @@ fun MainScreen(
                                         history = history,
                                         userFeedbackList = userFeedbackList,
                                         onAnimeClick = { onItemClick(Detail(it.id)) },
-                                        onHistoryClick = { onItemClick(Player(it.animeId, it.episodeNumber)) }
+                                        onHistoryClick = { onItemClick(Detail(it.animeId)) }
                                     )
                                     1 -> PhoneBrowseScreen(
                                         query = searchQuery,

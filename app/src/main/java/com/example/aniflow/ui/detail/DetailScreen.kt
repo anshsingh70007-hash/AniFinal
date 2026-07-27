@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.draw.blur
+import com.example.aniflow.data.WatchHistoryStore
 import com.example.aniflow.data.UserFeedbackStore
 import com.example.aniflow.data.UserFeedback
 
@@ -51,6 +52,7 @@ fun DetailScreen(
     repository: AnimeRepository,
     deviceType: DeviceType,
     watchlistStore: WatchlistStore,
+    watchHistoryStore: WatchHistoryStore,
     userFeedbackStore: UserFeedbackStore,
     onEpisodeClick: (Int) -> Unit,
     onAnimeClick: (Int) -> Unit,
@@ -58,7 +60,7 @@ fun DetailScreen(
 ) {
     val context = LocalContext.current
     val viewModel: DetailViewModel = viewModel {
-        DetailViewModel(repository, ProviderMappingStore(context.applicationContext))
+        DetailViewModel(repository, ProviderMappingStore(context.applicationContext), watchHistoryStore)
     }
 
     LaunchedEffect(animeId) {
@@ -66,6 +68,7 @@ fun DetailScreen(
     }
 
     val uiState by viewModel.uiState.collectAsState()
+    val watchHistoryEntry by viewModel.watchHistoryEntry.collectAsState()
     val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
     val userFeedbackText by userFeedbackStore.getFeedbackForAnimeFlow(animeId).collectAsState(initial = null)
     var showFeedbackDialog by remember { mutableStateOf(false) }
@@ -248,7 +251,7 @@ fun DetailScreen(
                                             color = if (isWatchFocused) Color.White else Color.Transparent,
                                             shape = RoundedCornerShape(24.dp)
                                         )
-                                        .clickable { onEpisodeClick(1) }
+                                        .clickable { onEpisodeClick(watchHistoryEntry?.episodeNumber ?: 1) }
                                         .onFocusChanged { isWatchFocused = it.isFocused }
                                         .focusable()
                                         .padding(horizontal = 20.dp, vertical = 10.dp)
@@ -258,7 +261,7 @@ fun DetailScreen(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = TextPrimary)
-                                        Text("Watch Ep 1", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(if (watchHistoryEntry != null) "Continue Ep ${watchHistoryEntry?.episodeNumber}" else "Watch Ep 1", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                     }
                                 }
 

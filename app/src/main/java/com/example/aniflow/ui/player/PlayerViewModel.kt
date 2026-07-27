@@ -66,6 +66,7 @@ class PlayerViewModel(
     // Centralized failover & cooldown controller using monotonic clock (nanotime)
     private val endpointCooldowns = mutableMapOf<String, Long>() // endpointId -> cooldownUntilNs
     private var stablePlaybackJob: Job? = null
+    private val backgroundScope = CoroutineScope(ioDispatcher + SupervisorJob())
 
     // Generation-based stale write protection
     private var generationId = 0L
@@ -125,6 +126,48 @@ class PlayerViewModel(
                 // ignore
             }
         }
+        backgroundScope.launch {
+            combine(selectedSource, isPlaying) { source, playing ->
+                source to playing
+            }.collectLatest { (source, playing) ->
+                if (source != null && playing) {
+                    try {
+                        delay(20 * 60 * 1000L) // 20 minutes
+                        android.util.Log.d("PlayerViewModel", "Self-Heal: Proactively refreshing streaming sources in the background for endpoint: ${source.id}")
+                        val currentAnime = anime.value ?: return@collectLatest
+                        val index = currentEpisodeIndex.value
+                        val eps = episodeList.value
+                        if (index !in eps.indices) return@collectLatest
+                        val ep = eps[index]
+                        
+                        val request = EpisodeRequest(
+                            provider = activeProvider,
+                            seriesSlug = currentAnime.title,
+                            episodeId = ep.id,
+                            animeId = currentAnime.id,
+                            episodeNumber = ep.number,
+                            audioType = selectedAudioType.value
+                        )
+                        val sourcesResult = repository.getStreamingSources(request)
+                        if (sourcesResult is PlaybackResult.NativeSources) {
+                            streamingSources.value = EpisodeSourcesResponse(
+                                sources = sourcesResult.sources,
+                                subtitles = sourcesResult.subtitles
+                            )
+                            val matching = sourcesResult.sources.firstOrNull { it.server.value == selectedServer.value && it.audioType == selectedAudioType.value }
+                            if (matching != null && matching.url != selectedSource.value?.url) {
+                                android.util.Log.d("PlayerViewModel", "Self-Heal: Proactively updated active source URL in background.")
+                                selectedSource.value = matching
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.e("PlayerViewModel", "Self-Heal: Background proactive source refresh failed", e)
+                    }
+                }
+            }
+        }
         updateProviderStatuses()
     }
 
@@ -179,16 +222,29 @@ class PlayerViewModel(
                         englishTitle = detail.englishTitle,
                         nativeTitle = null,
                         seasonYear = detail.seasonYear,
-                        format = if (detail.episodes == 1) "MOVIE" else "TV"
+                        format = detail.format ?: if (detail.episodes == 1) "MOVIE" else "TV",
+                        expectedEpisodes = detail.episodes
                     )
                     val result = repository.getEpisodes(identity)
-                    val eps = when (result) {
+                    var eps = when (result) {
                         is EpisodeLookupResult.Matched -> {
                             resolvedProvider = result.provider
                             result.episodes
                         }
                         else -> emptyList()
                     }
+
+                    // Filter for airing anime: only show episodes that have actually aired
+                    if (detail.status == "RELEASING" && detail.nextAiringEpisode != null) {
+                        val maxAvailableEp = detail.nextAiringEpisode - 1
+                        if (maxAvailableEp > 0) {
+                            eps = eps.filter { it.number <= maxAvailableEp }
+                        }
+                    }
+
+                    // Deduplicate and sort
+                    eps = eps.distinctBy { it.number }.sortedBy { it.number }
+
                     episodeList.value = eps
                     val index = eps.indexOfFirst { it.number == episodeNumber }.coerceAtLeast(0)
                     currentEpisodeIndex.value = index
@@ -210,6 +266,7 @@ class PlayerViewModel(
     fun loadStreamingSourcesForIndex(index: Int) {
         val eps = episodeList.value
         if (index !in eps.indices) return
+        currentEpisodeIndex.value = index
         val ep = eps[index]
         
         currentPosition.value = 0L
@@ -279,59 +336,17 @@ class PlayerViewModel(
                             selectedAudioType.value = fallbackAudio
                         }
 
-                        val verifiedSource = withContext(ioDispatcher) {
-                            val startTime = System.currentTimeMillis()
-                            coroutineScope {
-                                val deferreds = langSources.map { source ->
-                                    async {
-                                        val isLive = try {
-                                            withTimeoutOrNull(1500L) {
-                                                val status = repository.checkUrlStatus(source.url, source.headers)
-                                                println("Checked server ${source.server.value} (${source.audioType}): status=$status in ${System.currentTimeMillis() - startTime}ms")
-                                                status in 200..399
-                                            } ?: false
-                                        } catch (e: Exception) {
-                                            false
-                                        }
-                                        if (isLive) source else null
-                                    }
-                                }
-                                deferreds.map { it.await() }.firstOrNull { it != null }
-                            }
-                        }
-
-                        var chosenSource = verifiedSource
+                        var chosenSource = langSources.firstOrNull()
                         if (chosenSource == null) {
                             val fallbackAudio = if (selectedAudioType.value == AudioType.SUB) AudioType.DUB else AudioType.SUB
                             val fallbackSources = allSources.filter { it.audioType == fallbackAudio }
                             if (fallbackSources.isNotEmpty()) {
-                                val verifiedFallback = withContext(ioDispatcher) {
-                                    coroutineScope {
-                                        val deferreds = fallbackSources.map { source ->
-                                            async {
-                                                val isLive = try {
-                                                    withTimeoutOrNull(1500L) {
-                                                        val status = repository.checkUrlStatus(source.url, source.headers)
-                                                        status in 200..399
-                                                    } ?: false
-                                                } catch (e: Exception) {
-                                                    false
-                                                }
-                                                if (isLive) source else null
-                                            }
-                                        }
-                                        deferreds.map { it.await() }.firstOrNull { it != null }
-                                    }
-                                }
-                                if (verifiedFallback != null) {
-                                    chosenSource = verifiedFallback
-                                    selectedAudioType.value = fallbackAudio
-                                }
+                                chosenSource = fallbackSources.firstOrNull()
+                                selectedAudioType.value = fallbackAudio
                             }
                         }
-
                         if (chosenSource == null) {
-                            chosenSource = langSources.firstOrNull()
+                            chosenSource = allSources.firstOrNull()
                         }
 
                         if (currentGen != generationId) return@launch
@@ -458,7 +473,7 @@ class PlayerViewModel(
                 title = currentAnime.title,
                 englishTitle = currentAnime.englishTitle,
                 seasonYear = currentAnime.seasonYear,
-                format = if (currentAnime.episodes == 1) "MOVIE" else "TV"
+                format = currentAnime.format ?: if (currentAnime.episodes == 1) "MOVIE" else "TV"
             ),
             episodeNumber = ep.number,
             audioType = selectedAudioType.value,
@@ -529,7 +544,7 @@ class PlayerViewModel(
                 title = currentAnime.title,
                 englishTitle = currentAnime.englishTitle,
                 seasonYear = currentAnime.seasonYear,
-                format = if (currentAnime.episodes == 1) "MOVIE" else "TV"
+                format = currentAnime.format ?: if (currentAnime.episodes == 1) "MOVIE" else "TV"
             ),
             episodeNumber = ep.number,
             audioType = selectedAudioType.value,
@@ -990,5 +1005,10 @@ class PlayerViewModel(
 
     suspend fun getSavedProgressEntry(animeId: Int): WatchHistoryEntry? {
         return watchHistoryStore.getProgress(animeId)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        backgroundScope.cancel()
     }
 }

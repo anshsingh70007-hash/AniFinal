@@ -280,10 +280,12 @@ fun SpotlightPager(
                         .padding(16.dp)
                 ) {
                     Text("SPOTLIGHT", color = SecondaryAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(2.dp))
                     Text(anime.title, color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val cleanDescription = remember(anime.description) {
                         anime.description?.replace(Regex("<[^>]*>"), "") ?: ""
                     }
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         cleanDescription,
                         color = TextSecondary,
@@ -321,13 +323,25 @@ fun AnimeSectionRow(
     onAnimeClick: (Anime) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(18.dp)
+                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+            )
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp
+            )
+        }
         Spacer(Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -388,9 +402,10 @@ fun AnimePosterCard(
             color = TextPrimary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            lineHeight = 14.sp,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
         )
     }
 }

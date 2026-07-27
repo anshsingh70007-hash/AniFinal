@@ -93,13 +93,25 @@ fun RedesignPhoneHomeScreen(
             if (airing.isNotEmpty()) {
                 item {
                     Column {
-                        Text(
-                            "📡 Airing Today",
-                            color = TextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(18.dp)
+                                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+                            )
+                            Text(
+                                "📡 Airing Today",
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.3.sp
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -129,13 +141,25 @@ fun RedesignPhoneHomeScreen(
             if (userFeedbackList.isNotEmpty()) {
                 item {
                     Column {
-                        Text(
-                            text = "❤️ User's Choice",
-                            color = TextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(18.dp)
+                                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+                            )
+                            Text(
+                                text = "❤️ User's Choice",
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.3.sp
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -334,18 +358,28 @@ fun RedesignSpotlightPager(
                     modifier = Modifier.fillMaxSize()
                 )
                 
-                if (pagerState.currentPage == page && !anime.trailerUrl.isNullOrEmpty()) {
-                    BackgroundTrailerPlayer(
-                        trailerUrl = anime.trailerUrl,
-                        modifier = Modifier.fillMaxSize(),
-                        isMuted = true,
-                        onVideoEnded = {
-                            coroutineScope.launch {
-                                val nextPage = (pagerState.currentPage + 1) % spotlightList.size
-                                pagerState.animateScrollToPage(nextPage)
-                            }
+                if (pagerState.currentPage == page && pagerState.isScrollInProgress.not() && !anime.trailerUrl.isNullOrEmpty()) {
+                    var showTrailer by remember(anime.id) { mutableStateOf(false) }
+                    LaunchedEffect(pagerState.currentPage, anime.id) {
+                        showTrailer = false
+                        delay(1500L)
+                        if (pagerState.currentPage == page) {
+                            showTrailer = true
                         }
-                    )
+                    }
+                    if (showTrailer) {
+                        BackgroundTrailerPlayer(
+                            trailerUrl = anime.trailerUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            isMuted = true,
+                            onVideoEnded = {
+                                coroutineScope.launch {
+                                    val nextPage = (pagerState.currentPage + 1) % spotlightList.size
+                                    pagerState.animateScrollToPage(nextPage)
+                                }
+                            }
+                        )
+                    }
                 }
                 
                 // Backdrop gradient overlay to blend character art beautifully
@@ -600,13 +634,25 @@ fun RedesignAnimeSectionRow(
     onAnimeClick: (Anime) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(18.dp)
+                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+            )
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp
+            )
+        }
         Spacer(Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -665,9 +711,10 @@ fun RedesignAnimePosterCard(
             color = TextPrimary,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            lineHeight = 14.sp,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
         )
     }
 }
@@ -717,13 +764,25 @@ fun RedesignContinueWatchingRow(
     onHistoryClick: (WatchHistoryEntry) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(18.dp)
+                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+            )
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp
+            )
+        }
         Spacer(Modifier.height(8.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),

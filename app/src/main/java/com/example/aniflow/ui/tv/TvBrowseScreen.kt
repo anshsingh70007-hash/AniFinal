@@ -42,145 +42,180 @@ fun TvBrowseScreen(
         listOf("Action", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Adventure", "Suspense", "Slice of Life")
     }
 
-    Column(
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(150.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp),
         modifier = Modifier
             .fillMaxSize()
             .background(PrimaryDark)
-            .padding(horizontal = 24.dp, vertical = 24.dp)
     ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search upcoming & popular anime...", color = TextTertiary) },
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = PrimaryAccent,
-                unfocusedBorderColor = SurfaceBorder,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                focusedContainerColor = PrimaryDarker,
-                unfocusedContainerColor = PrimaryDarker
-            ),
-            singleLine = true
-        )
+        // Frosted search input
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                placeholder = { Text("Search upcoming & popular anime...", color = TextTertiary) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PrimaryAccent,
+                    unfocusedBorderColor = SurfaceBorder,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedContainerColor = PrimaryDarker,
+                    unfocusedContainerColor = PrimaryDarker
+                ),
+                singleLine = true
+            )
+        }
 
-        Spacer(Modifier.height(16.dp))
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(16.dp))
+        }
 
         // Genre Filter Chips Row
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (selectedGenre != null) {
-                item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (selectedGenre != null) {
+                    item {
+                        TvGenreChip(
+                            text = "Clear Filter (X)",
+                            isSelected = true,
+                            onClick = { onGenreSelect(null) }
+                        )
+                    }
+                }
+                items(genres) { genre ->
+                    val isSelected = selectedGenre == genre
                     TvGenreChip(
-                        text = "Clear Filter (X)",
-                        isSelected = true,
-                        onClick = { onGenreSelect(null) }
+                        text = genre,
+                        isSelected = isSelected,
+                        onClick = { onGenreSelect(if (isSelected) null else genre) }
                     )
                 }
             }
-            items(genres) { genre ->
-                val isSelected = selectedGenre == genre
-                TvGenreChip(
-                    text = genre,
-                    isSelected = isSelected,
-                    onClick = { onGenreSelect(if (isSelected) null else genre) }
-                )
-            }
         }
 
-        Spacer(Modifier.height(8.dp))
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(8.dp))
+        }
 
         // A-Z Alphabetical Search Bar
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            val alphabets = ('A'..'Z').map { it.toString() }
-            items(alphabets) { letter ->
-                val isSelected = query == letter
-                var isFocused by remember { mutableStateOf(false) }
-                
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            when {
-                                isSelected -> PrimaryAccent
-                                isFocused -> SurfaceBorder
-                                else -> PrimaryDarker
-                            }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val alphabets = ('A'..'Z').map { it.toString() }
+                items(alphabets) { letter ->
+                    val isSelected = query == letter
+                    var isFocused by remember { mutableStateOf(false) }
+                    
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                when {
+                                    isSelected -> PrimaryAccent
+                                    isFocused -> SurfaceBorder
+                                    else -> PrimaryDarker
+                                }
+                            )
+                            .border(
+                                width = 0.5.dp,
+                                color = if (isFocused || isSelected) SecondaryAccent else SurfaceBorder,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .onFocusChanged { isFocused = it.isFocused }
+                            .clickable { onQueryChange(letter) }
+                            .focusable()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = letter,
+                            color = if (isSelected || isFocused) TextPrimary else TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        .border(
-                            width = 0.5.dp,
-                            color = if (isFocused || isSelected) SecondaryAccent else SurfaceBorder,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .onFocusChanged { isFocused = it.isFocused }
-                        .clickable { onQueryChange(letter) }
-                        .focusable()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = letter,
-                        color = if (isSelected || isFocused) TextPrimary else TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(20.dp))
+        }
 
+        // Content states
         if (results.isEmpty() && isSearchLoading) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = PrimaryAccent)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = PrimaryAccent)
+                }
             }
         } else if (results.isEmpty()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(64.dp), tint = TextTertiary)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (selectedGenre != null) "No results found for genre $selectedGenre" else "Type at least 2 characters to search or select a genre above",
-                        color = TextSecondary
-                    )
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(64.dp), tint = TextTertiary)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (selectedGenre != null) "No results found for genre $selectedGenre" else "Type at least 2 characters to search or select a genre above",
+                            color = TextSecondary
+                        )
+                    }
                 }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(150.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(results) { anime ->
-                    TvAnimeCard(anime = anime, onClick = { onAnimeClick(anime) })
+            // Grid Items
+            items(results) { anime ->
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TvAnimeCard(
+                        anime = anime,
+                        onClick = { onAnimeClick(anime) }
+                    )
                 }
-                
-                if (hasNextPage && !isSearchLoading && results.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        LaunchedEffect(Unit) {
-                            onLoadMore()
-                        }
+            }
+            
+            if (hasNextPage && !isSearchLoading && results.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LaunchedEffect(Unit) {
+                        onLoadMore()
                     }
                 }
-                
-                if (isSearchLoading && hasNextPage) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = PrimaryAccent, modifier = Modifier.size(32.dp))
-                        }
+            }
+            
+            if (isSearchLoading && hasNextPage) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = PrimaryAccent, modifier = Modifier.size(32.dp))
                     }
                 }
             }

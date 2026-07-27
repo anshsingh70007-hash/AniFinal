@@ -196,8 +196,6 @@ class PlayerViewModelTest {
                 EpisodeLookupResult.Matched(ProviderId.ANILIGHT, ProviderSeriesId("anime1"), episodes)
             override suspend fun getStreamingSources(request: EpisodeRequest): PlaybackResult =
                 PlaybackResult.NativeSources(ProviderId.ANILIGHT, sources)
-            override suspend fun checkUrlStatus(url: String, headers: Map<String, String>): Int =
-                if (url == "url_near_sub") 200 else 404
         }
         
         val testViewModel = PlayerViewModel(mockRepo, watchHistoryStore, settingsStore, testDispatcher).also { activeViewModel = it }
@@ -206,8 +204,19 @@ class PlayerViewModelTest {
         
         testViewModel.loadStreamingSourcesForIndex(0)
         advanceUntilIdle()
+        
+        // Initially selected server is misa to avoid blocking HTTP pings during load
+        assertEquals(testViewModel.selectedServer.value, "misa")
+        assertEquals(testViewModel.selectedSource.value?.url, "url_misa_sub")
 
-        // NEAR should be autoselected since checkUrlStatus returned 200 (live)
+        // Trigger playback error on misa
+        val mockException = androidx.media3.common.PlaybackException(
+            "Playback failed", null, androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+        )
+        testViewModel.handlePlaybackError(mockException, 0L)
+        advanceUntilIdle()
+
+        // Automatical failover to near
         assertEquals(testViewModel.selectedServer.value, "near")
         assertEquals(testViewModel.selectedSource.value?.url, "url_near_sub")
     }

@@ -18,6 +18,7 @@ private val Context.watchHistoryDataStore: DataStore<Preferences> by preferences
 class WatchHistoryStore(private val context: Context) {
     private val json = NetworkModule.json
     private val historyKey = stringPreferencesKey("history_json")
+    private val backupHistoryKey = stringPreferencesKey("history_json_backup")
     private val scope = CoroutineScope(Dispatchers.IO)
 
     val historyFlow: Flow<List<WatchHistoryEntry>> = context.watchHistoryDataStore.data.map { preferences ->
@@ -26,6 +27,9 @@ class WatchHistoryStore(private val context: Context) {
             json.decodeFromString<List<WatchHistoryEntry>>(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
+            scope.launch {
+                repairAndLoadHistory(jsonStr)
+            }
             emptyList()
         }
     }
@@ -37,8 +41,44 @@ class WatchHistoryStore(private val context: Context) {
             json.decodeFromString<List<WatchHistoryEntry>>(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
-            emptyList()
+            repairAndLoadHistory(jsonStr)
         }
+    }
+
+    private suspend fun repairAndLoadHistory(corruptedJson: String): List<WatchHistoryEntry> {
+        android.util.Log.e("WatchHistoryStore", "Self-Heal: Watch history JSON corrupted! Attempting recovery. Raw: $corruptedJson")
+        try {
+            context.watchHistoryDataStore.edit { prefs ->
+                prefs[backupHistoryKey] = corruptedJson
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val salvaged = mutableListOf<WatchHistoryEntry>()
+        try {
+            val pattern = java.util.regex.Pattern.compile("\\{[^{}]+\\}")
+            val matcher = pattern.matcher(corruptedJson)
+            while (matcher.find()) {
+                val candidate = matcher.group()
+                try {
+                    val entry = json.decodeFromString<WatchHistoryEntry>(candidate)
+                    salvaged.add(entry)
+                } catch (e: Exception) {
+                    // Ignore non-parseable items
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            saveHistory(salvaged)
+            android.util.Log.d("WatchHistoryStore", "Self-Heal: Recovered ${salvaged.size} history entries.")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return salvaged
     }
 
     suspend fun getProgress(animeId: Int): WatchHistoryEntry? {

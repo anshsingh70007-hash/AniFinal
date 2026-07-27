@@ -8,6 +8,7 @@ import com.example.aniflow.data.model.Anime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 
 private val Context.watchlistDataStore: DataStore<Preferences> by preferencesDataStore(name = "watchlist_preferences")
@@ -15,6 +16,8 @@ private val Context.watchlistDataStore: DataStore<Preferences> by preferencesDat
 class WatchlistStore(private val context: Context) {
     private val json = NetworkModule.json
     private val watchlistKey = stringPreferencesKey("watchlist_json")
+    private val backupWatchlistKey = stringPreferencesKey("watchlist_json_backup")
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
 
     val watchlistFlow: Flow<List<Anime>> = context.watchlistDataStore.data.map { preferences ->
         val jsonStr = preferences[watchlistKey] ?: "[]"
@@ -22,6 +25,9 @@ class WatchlistStore(private val context: Context) {
             json.decodeFromString<List<Anime>>(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
+            scope.launch {
+                repairAndLoadWatchlist(jsonStr)
+            }
             emptyList()
         }
     }
@@ -33,8 +39,44 @@ class WatchlistStore(private val context: Context) {
             json.decodeFromString<List<Anime>>(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
-            emptyList()
+            repairAndLoadWatchlist(jsonStr)
         }
+    }
+
+    private suspend fun repairAndLoadWatchlist(corruptedJson: String): List<Anime> {
+        android.util.Log.e("WatchlistStore", "Self-Heal: Watchlist JSON corrupted! Attempting recovery. Raw: $corruptedJson")
+        try {
+            context.watchlistDataStore.edit { prefs ->
+                prefs[backupWatchlistKey] = corruptedJson
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val salvaged = mutableListOf<Anime>()
+        try {
+            val pattern = java.util.regex.Pattern.compile("\\{[^{}]+\\}")
+            val matcher = pattern.matcher(corruptedJson)
+            while (matcher.find()) {
+                val candidate = matcher.group()
+                try {
+                    val entry = json.decodeFromString<Anime>(candidate)
+                    salvaged.add(entry)
+                } catch (e: Exception) {
+                    // Ignore non-parseable items
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            saveWatchlist(salvaged)
+            android.util.Log.d("WatchlistStore", "Self-Heal: Recovered ${salvaged.size} watchlist entries.")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return salvaged
     }
 
     suspend fun addToWatchlist(anime: Anime) {

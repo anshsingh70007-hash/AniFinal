@@ -49,140 +49,172 @@ fun RedesignTvBrowseScreen(
         listOf("Action", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Adventure", "Suspense", "Slice of Life")
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 12.dp)
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(140.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp),
+        modifier = Modifier.fillMaxSize()
     ) {
         // Frosted search input
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .glassSurface(RoundedCornerShape(12.dp)),
-            placeholder = { Text("Search upcoming & popular anime...", color = GlassTokens.TextMuted) },
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent
-            ),
-            singleLine = true
-        )
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .glassSurface(RoundedCornerShape(12.dp)),
+                placeholder = { Text("Search upcoming & popular anime...", color = GlassTokens.TextMuted) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                ),
+                singleLine = true
+            )
+        }
 
-        Spacer(Modifier.height(8.dp))
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(8.dp))
+        }
 
         // Genre Filter Chips Row
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (selectedGenre != null) {
-                item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (selectedGenre != null) {
+                    item {
+                        RedesignTvGenreChip(
+                            text = "Clear Filter (X)",
+                            isSelected = true,
+                            onClick = { onGenreSelect(null) }
+                        )
+                    }
+                }
+                items(genres) { genre ->
+                    val isSelected = selectedGenre == genre
                     RedesignTvGenreChip(
-                        text = "Clear Filter (X)",
-                        isSelected = true,
-                        onClick = { onGenreSelect(null) }
+                        text = genre,
+                        isSelected = isSelected,
+                        onClick = { onGenreSelect(if (isSelected) null else genre) }
                     )
                 }
             }
-            items(genres) { genre ->
-                val isSelected = selectedGenre == genre
-                RedesignTvGenreChip(
-                    text = genre,
-                    isSelected = isSelected,
-                    onClick = { onGenreSelect(if (isSelected) null else genre) }
-                )
-            }
         }
 
-        Spacer(Modifier.height(4.dp))
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(4.dp))
+        }
 
         // A-Z Alphabetical Search Bar
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            val alphabets = ('A'..'Z').map { it.toString() }
-            items(alphabets) { letter ->
-                val isSelected = query == letter
-                var isFocused by remember { mutableStateOf(false) }
-                
-                Box(
-                    modifier = Modifier
-                        .onFocusChanged { isFocused = it.isFocused }
-                        .focusGlow(isFocused, RoundedCornerShape(12.dp))
-                        .glassSurface(
-                            shape = RoundedCornerShape(12.dp),
-                            isFocused = isFocused || isSelected
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val alphabets = ('A'..'Z').map { it.toString() }
+                items(alphabets) { letter ->
+                    val isSelected = query == letter
+                    var isFocused by remember { mutableStateOf(false) }
+                    
+                    Box(
+                        modifier = Modifier
+                            .onFocusChanged { isFocused = it.isFocused }
+                            .focusGlow(isFocused, RoundedCornerShape(12.dp))
+                            .glassSurface(
+                                shape = RoundedCornerShape(12.dp),
+                                isFocused = isFocused || isSelected
+                            )
+                            .clickable { onQueryChange(letter) }
+                            .focusable()
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = letter,
+                            color = if (isSelected || isFocused) GlassTokens.GlowCyan else TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        .clickable { onQueryChange(letter) }
-                        .focusable()
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = letter,
-                        color = if (isSelected || isFocused) GlassTokens.GlowCyan else TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(12.dp))
+        }
 
+        // Content states
         if (results.isEmpty() && isSearchLoading) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = GlassTokens.GlowCyan)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = GlassTokens.GlowCyan)
+                }
             }
         } else if (results.isEmpty()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(64.dp), tint = TextTertiary)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (selectedGenre != null) "No results found for genre $selectedGenre" else "Type at least 2 characters to search or select a genre above",
-                        color = GlassTokens.TextMuted,
-                        fontSize = 14.sp
-                    )
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(64.dp), tint = TextTertiary)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (selectedGenre != null) "No results found for genre $selectedGenre" else "Type at least 2 characters to search or select a genre above",
+                            color = GlassTokens.TextMuted,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(140.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(results) { anime ->
-                    RedesignTvPosterCard(anime = anime, onClick = { onAnimeClick(anime) })
+            // Grid Items
+            items(results) { anime ->
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    RedesignTvPosterCard(
+                        anime = anime,
+                        onClick = { onAnimeClick(anime) }
+                    )
                 }
-                
-                if (hasNextPage && !isSearchLoading && results.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        LaunchedEffect(Unit) {
-                            onLoadMore()
-                        }
+            }
+            
+            if (hasNextPage && !isSearchLoading && results.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    LaunchedEffect(Unit) {
+                        onLoadMore()
                     }
                 }
-                
-                if (isSearchLoading && hasNextPage) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = GlassTokens.GlowCyan, modifier = Modifier.size(32.dp))
-                        }
+            }
+            
+            if (isSearchLoading && hasNextPage) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = GlassTokens.GlowCyan, modifier = Modifier.size(32.dp))
                     }
                 }
             }

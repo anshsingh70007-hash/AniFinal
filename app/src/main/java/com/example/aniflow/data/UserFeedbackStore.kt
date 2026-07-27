@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import io.ktor.client.request.*
@@ -82,6 +84,8 @@ class UserFeedbackStore(private val context: Context) {
     private val json = NetworkModule.json
     private val client = NetworkModule.client
     private val feedbackKey = stringPreferencesKey("feedback_json")
+    private val backupFeedbackKey = stringPreferencesKey("feedback_json_backup")
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
     private val globalDocUrl = "https://api.restful-api.dev/objects/ff8081819d82fab6019f6fb7249673e0"
 
     private val refreshSignal = MutableSharedFlow<Unit>(replay = 1).apply {
@@ -94,6 +98,9 @@ class UserFeedbackStore(private val context: Context) {
             json.decodeFromString<List<UserFeedback>>(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
+            scope.launch {
+                repairAndLoadFeedback(jsonStr)
+            }
             emptyList()
         }
     }
@@ -104,19 +111,74 @@ class UserFeedbackStore(private val context: Context) {
             val cached = getLocalFeedbackList()
             emit(cached)
 
-            // Then fetch from server and update local cache
-            try {
-                val response: HttpResponse = client.get(globalDocUrl)
-                if (response.status == HttpStatusCode.OK) {
-                    val resBody = response.body<GlobalFeedbackResponse>()
-                    val serverList = resBody.data.list
-                    saveLocalFeedbackList(serverList)
-                    emit(serverList)
+            // Then fetch from server and update local cache with retry backoff
+            var success = false
+            var attempt = 1
+            while (!success && attempt <= 4) {
+                try {
+                    val response: HttpResponse = client.get(globalDocUrl) {
+                        header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    }
+                    if (response.status == HttpStatusCode.OK) {
+                        val bodyText = response.bodyAsText()
+                        val parsed = try {
+                            json.decodeFromString<GlobalFeedbackResponse>(bodyText)
+                        } catch (e: Exception) {
+                            android.util.Log.e("UserFeedbackStore", "Failed to parse server response: $bodyText", e)
+                            null
+                        }
+                        if (parsed != null) {
+                            val serverList = parsed.data.list
+                            val latestCached = getLocalFeedbackList()
+                            val mergedList = mergeFeedbackLists(latestCached, serverList)
+                            saveLocalFeedbackList(mergedList)
+                            emit(mergedList)
+                            success = true
+                        }
+                    } else {
+                        android.util.Log.w("UserFeedbackStore", "Server returned status: ${response.status} (attempt $attempt)")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("UserFeedbackStore", "Failed to fetch feedback from server (attempt $attempt)", e)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                // If network fails, we fall back gracefully to the cache we already emitted
+                if (!success && attempt < 4) {
+                    kotlinx.coroutines.delay(attempt * 3000L) // backoff: 3s, 6s, 9s
+                }
+                attempt++
             }
+        }
+    }
+
+    private fun mergeFeedbackLists(local: List<UserFeedback>, server: List<UserFeedback>): List<UserFeedback> {
+        val now = System.currentTimeMillis()
+        val serverMap = server.associateBy { it.anime.id }
+        val merged = mutableListOf<UserFeedback>()
+
+        // Add all server items
+        merged.addAll(server)
+
+        // For local items not on server, keep them if they are very recent (within 15 seconds)
+        // For local items on server, keep the one with the latest timestamp
+        for (localItem in local) {
+            val serverItem = serverMap[localItem.anime.id]
+            if (serverItem == null) {
+                if (now - localItem.timestamp < 15000L) {
+                    merged.add(localItem)
+                }
+            } else {
+                if (localItem.timestamp > serverItem.timestamp) {
+                    merged.remove(serverItem)
+                    merged.add(localItem)
+                }
+            }
+        }
+
+        return merged.sortedByDescending { it.timestamp }
+    }
+
+    fun refresh() {
+        scope.launch {
+            refreshSignal.emit(Unit)
         }
     }
 
@@ -127,8 +189,44 @@ class UserFeedbackStore(private val context: Context) {
             json.decodeFromString<List<UserFeedback>>(jsonStr)
         } catch (e: Exception) {
             e.printStackTrace()
-            emptyList()
+            repairAndLoadFeedback(jsonStr)
         }
+    }
+
+    private suspend fun repairAndLoadFeedback(corruptedJson: String): List<UserFeedback> {
+        android.util.Log.e("UserFeedbackStore", "Self-Heal: UserFeedback JSON corrupted! Attempting recovery. Raw: $corruptedJson")
+        try {
+            context.userFeedbackDataStore.edit { prefs ->
+                prefs[backupFeedbackKey] = corruptedJson
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val salvaged = mutableListOf<UserFeedback>()
+        try {
+            val pattern = java.util.regex.Pattern.compile("\\{[^{}]+\\}")
+            val matcher = pattern.matcher(corruptedJson)
+            while (matcher.find()) {
+                val candidate = matcher.group()
+                try {
+                    val entry = json.decodeFromString<UserFeedback>(candidate)
+                    salvaged.add(entry)
+                } catch (e: Exception) {
+                    // Ignore non-parseable items
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            saveLocalFeedbackList(salvaged)
+            android.util.Log.d("UserFeedbackStore", "Self-Heal: Recovered ${salvaged.size} user feedback entries.")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return salvaged
     }
 
     private suspend fun saveLocalFeedbackList(list: List<UserFeedback>) {
@@ -142,10 +240,22 @@ class UserFeedbackStore(private val context: Context) {
         // Fetch current list from server first to be in sync
         var currentList = emptyList<UserFeedback>()
         try {
-            val response: HttpResponse = client.get(globalDocUrl)
+            val response: HttpResponse = client.get(globalDocUrl) {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            }
             if (response.status == HttpStatusCode.OK) {
-                val resBody = response.body<GlobalFeedbackResponse>()
-                currentList = resBody.data.list
+                val bodyText = response.bodyAsText()
+                val parsed = try {
+                    json.decodeFromString<GlobalFeedbackResponse>(bodyText)
+                } catch (e: Exception) {
+                    android.util.Log.e("UserFeedbackStore", "Failed to parse server response in save: $bodyText", e)
+                    null
+                }
+                if (parsed != null) {
+                    currentList = mergeFeedbackLists(getLocalFeedbackList(), parsed.data.list)
+                } else {
+                    currentList = getLocalFeedbackList()
+                }
             } else {
                 currentList = getLocalFeedbackList()
             }
@@ -173,17 +283,46 @@ class UserFeedbackStore(private val context: Context) {
         // Update local cache
         saveLocalFeedbackList(updated)
 
-        // Send update to server
+        // Send update to server with retry loop
+        var putSuccess = false
+        var putAttempt = 1
+        while (!putSuccess && putAttempt <= 3) {
+            try {
+                val response = client.put(globalDocUrl) {
+                    contentType(ContentType.Application.Json)
+                    header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    setBody(GlobalFeedbackRequest(data = GlobalFeedbackData(list = updated)))
+                }
+                if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
+                    putSuccess = true
+                } else {
+                    android.util.Log.w("UserFeedbackStore", "PUT failed with status: ${response.status} (attempt $putAttempt)")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("UserFeedbackStore", "PUT failed (attempt $putAttempt)", e)
+            }
+            if (!putSuccess && putAttempt < 3) {
+                kotlinx.coroutines.delay(putAttempt * 2000L)
+            }
+            putAttempt++
+        }
+
+        // Trigger flow collection to emit updated value instantly!
+        refreshSignal.emit(Unit)
+    }
+
+    suspend fun resetServer() {
         try {
             client.put(globalDocUrl) {
                 contentType(ContentType.Application.Json)
-                setBody(GlobalFeedbackRequest(data = GlobalFeedbackData(list = updated)))
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                setBody(GlobalFeedbackRequest(data = GlobalFeedbackData(list = emptyList())))
             }
+            saveLocalFeedbackList(emptyList())
+            refreshSignal.emit(Unit)
+            android.util.Log.d("UserFeedbackStore", "Feedback section reset successfully")
         } catch (e: Exception) {
             e.printStackTrace()
-        } finally {
-            // Trigger flow collection to emit updated value instantly!
-            refreshSignal.emit(Unit)
         }
     }
 

@@ -238,7 +238,19 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     }.flowOn(Dispatchers.IO)
 
     override fun searchAnime(query: String, page: Int): Flow<SearchPage> = flow {
-        val searchPage = aniListApi.searchAnime(query, page)
+        val optimizedQuery = optimizeQuery(query)
+        var searchPage = aniListApi.searchAnime(optimizedQuery, page)
+        
+        if (searchPage.results.isEmpty() && page == 1) {
+            val correctedQuery = findSpellingCorrection(optimizedQuery)
+            if (correctedQuery != null && correctedQuery != optimizedQuery) {
+                val fallbackPage = aniListApi.searchAnime(correctedQuery, page)
+                if (fallbackPage.results.isNotEmpty()) {
+                    searchPage = fallbackPage
+                }
+            }
+        }
+        
         val list = if (searchPage.results.isEmpty() && page == 1) {
             getFallbackAnimeList()
         } else {
@@ -269,8 +281,15 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             var primaryResult: EpisodeLookupResult? = null
             if (mapping != null) {
                 val epResult = provider.getEpisodes(ProviderSeriesId(mapping.slug))
-                if (epResult is EpisodeLookupResult.Matched) {
-                    primaryResult = epResult
+                if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    val expected = identity.expectedEpisodes
+                    val found = epResult.episodes.size
+                    if (expected != null && expected > 0 && Math.abs(found - expected).toDouble() / expected > 0.50) {
+                        android.util.Log.w("DefaultAnimeRepository", "Self-Heal: Mapping episode count mismatch (found: $found, expected: $expected). Invalidating stale mapping.")
+                        providerMappingStore.invalidateMapping(providerId, identity.anilistId)
+                    } else {
+                        primaryResult = epResult
+                    }
                 } else {
                     providerMappingStore.invalidateMapping(providerId, identity.anilistId)
                 }
@@ -494,6 +513,123 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             } catch (e2: Exception) {
                 0
             }
+        }
+    }
+
+    private fun optimizeQuery(query: String): String {
+        var optimized = query.lowercase().trim()
+        val expansions = mapOf(
+            "jjk" to "jujutsu kaisen",
+            "aot" to "attack on titan",
+            "sao" to "sword art online",
+            "hxh" to "hunter x hunter",
+            "fmab" to "fullmetal alchemist brotherhood",
+            "opm" to "one punch man",
+            "op" to "one piece",
+            "dn" to "death note",
+            "mha" to "my hero academia",
+            "bhna" to "boku no hero academia",
+            "ds" to "demon slayer",
+            "kny" to "kimetsu no yaiba",
+            "mt" to "mushoku tensei",
+            "danmachi" to "dungeon ni deai wo motomeru",
+            "oregairu" to "yahari ore no seishun",
+            "konosuba" to "kono subarashii sekai",
+            "tensura" to "tensei shitara slime datta ken",
+            "slime isekai" to "tensei shitara slime datta ken",
+            "ngnl" to "no game no life",
+            "tg" to "tokyo ghoul"
+        )
+        for ((abbrev, expansion) in expansions) {
+            val regex = Regex("\\b$abbrev\\b")
+            if (regex.containsMatchIn(optimized)) {
+                optimized = optimized.replace(regex, expansion)
+            }
+        }
+        return optimized
+    }
+
+    private fun levenshteinDistance(s1: String, s2: String): Int {
+        val len1 = s1.length
+        val len2 = s2.length
+        val dp = Array(len1 + 1) { IntArray(len2 + 1) }
+        for (i in 0..len1) dp[i][0] = i
+        for (j in 0..len2) dp[0][j] = j
+        for (i in 1..len1) {
+            for (j in 1..len2) {
+                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+                dp[i][j] = minOf(
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + cost
+                )
+            }
+        }
+        return dp[len1][len2]
+    }
+
+    private val popularAnimeDictionary = listOf(
+        "Naruto", "Naruto Shippuden", "Bleach", "Bleach: Thousand-Year Blood War", "One Piece", "Death Note",
+        "Attack on Titan", "Shingeki no Kyojin", "My Hero Academia", "Boku no Hero Academia",
+        "Demon Slayer", "Kimetsu no Yaiba", "Jujutsu Kaisen", "Hunter x Hunter", "Fullmetal Alchemist",
+        "Fullmetal Alchemist: Brotherhood", "Sword Art Online", "One Punch Man", "Chainsaw Man",
+        "Frieren: Beyond Journey's End", "Sousou no Frieren", "Mushoku Tensei", "Mushoku Tensei: Jobless Reincarnation",
+        "Tokyo Ghoul", "Steins;Gate", "No Game No Life", "Code Geass", "Re:Zero", "Re:Zero - Starting Life in Another World",
+        "KonoSuba", "Tensei Shitara Slime Datta Ken", "That Time I Got Reincarnated as a Slime",
+        "Dungeon ni Deai wo Motomeru", "Is It Wrong to Try to Pick Up Girls in a Dungeon?",
+        "Yahari Ore no Seishun Love Comedy wa Machigatteiru", "Oregairu", "Cyberpunk: Edgerunners",
+        "Vinland Saga", "Monster", "Mob Psycho 100", "Bocchi the Rock!", "Kaguya-sama: Love is War",
+        "Kaguya-sama wa Kokurasetai", "Oshi no Ko", "Spy x Family", "Solo Leveling", "Kaiju No. 8",
+        "Black Clover", "Fairy Tail", "Dragon Ball Z", "Dragon Ball Super", "Neon Genesis Evangelion",
+        "Your Name", "Kimi no Na wa", "A Silent Voice", "Koe no Katachi", "Spirited Away", "Princess Mononoke",
+        "Cowboy Bebop", "Samurai Champloo", "Code Geass: Lelouch of the Rebellion", "Tengen Toppa Gurren Lagann",
+        "Your Lie in April", "Shigatsu wa Kimi no Uso", "Toradora!", "Clannad", "Clannad: After Story",
+        "Fate/Zero", "Fate/stay night: Unlimited Blade Works", "Fate/stay night: Heaven's Feel",
+        "Haikyu!!", "Kuroko's Basketball", "Kuroko no Basket", "Blue Lock", "Jujutsu Kaisen 2nd Season",
+        "Dr. STONE", "Fire Force", "Enen no Shouboutai", "The Rising of the Shield Hero", "Tate no Yuusha no Nariagari",
+        "Overlord", "Goblin Slayer", "The Eminence in Shadow", "Kage no Jitsuryokusha ni Naritakute!",
+        "Erased", "Boku dake ga Inai Machi", "Death Parade", "Noragami", "Soul Eater", "Assassination Classroom",
+        "Ansatsu Kyoushitsu", "Angel Beats!", "Anohana: The Flower We Saw That Day", "Charlotte",
+        "Tokyo Revengers", "Hell's Paradise", "Jigokuraku", "Dangers in My Heart", "Boku no Kokoro no Yabai Yatsu"
+    )
+
+    private fun findSpellingCorrection(query: String): String? {
+        val q = query.lowercase().trim()
+        if (q.length < 3) return null
+        var bestMatch: String? = null
+        var minDistance = Int.MAX_VALUE
+        for (title in popularAnimeDictionary) {
+            val t = title.lowercase()
+            if (t.contains(q)) return title
+            val dist = levenshteinDistance(q, t)
+            if (dist < minDistance) {
+                minDistance = dist
+                bestMatch = title
+            }
+        }
+        val threshold = when {
+            q.length <= 4 -> 1
+            q.length <= 7 -> 2
+            else -> 3
+        }
+        return if (minDistance <= threshold) bestMatch else null
+    }
+
+    fun healAllCaches() {
+        val now = System.currentTimeMillis()
+        if (now - lastTrendingFetchTime > 30 * 60 * 1000L) { cachedTrending = null }
+        if (now - lastPopularFetchTime > 30 * 60 * 1000L) { cachedPopular = null }
+        if (now - lastSeasonalFetchTime > 30 * 60 * 1000L) { cachedSeasonal = null }
+        if (now - lastTopRatedFetchTime > 30 * 60 * 1000L) { cachedTopRated = null }
+        if (now - lastUpcomingFetchTime > 30 * 60 * 1000L) { cachedUpcoming = null }
+        if (now - lastActionFetchTime > 30 * 60 * 1000L) { cachedAction = null }
+        if (now - lastRomanceFetchTime > 30 * 60 * 1000L) { cachedRomance = null }
+        if (now - lastScheduleFetchTime > 30 * 60 * 1000L) { cachedSchedule = null }
+        
+        try {
+            aniLightProvider.healWatchCache()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

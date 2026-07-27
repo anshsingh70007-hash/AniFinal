@@ -31,4 +31,10 @@ object ProviderRegistry {
             ProviderId.ANIKOTO -> 3
         }
     }
+
+    fun healAllCircuitBreakers(maxOpenDurationMs: Long = 5 * 60 * 1000L) {
+        circuitBreakers.values.forEach { breaker ->
+            breaker.forceResetIfStaleOpen(maxOpenDurationMs)
+        }
+    }
 }

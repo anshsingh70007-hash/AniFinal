@@ -284,10 +284,12 @@ fun TvSpotlight(
                 .padding(24.dp)
         ) {
             Text("TRENDING SPOTLIGHT", color = SecondaryAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
             Text(anime.title, color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             val cleanDescription = remember(anime.description) {
                 anime.description?.replace(Regex("<[^>]*>"), "") ?: ""
             }
+            Spacer(Modifier.height(6.dp))
             Text(
                 cleanDescription,
                 color = TextSecondary,
@@ -295,6 +297,28 @@ fun TvSpotlight(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                anime.genres.take(3).forEach { genre ->
+                    Box(
+                        modifier = Modifier
+                            .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(genre, color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+                anime.episodes?.let { eps ->
+                    Box(
+                        modifier = Modifier
+                            .background(PrimaryAccent.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("$eps Episodes", color = PrimaryAccentLight, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
         }
     }
 }
@@ -306,12 +330,24 @@ fun TvAnimeSectionRow(
     onAnimeClick: (Anime) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(22.dp)
+                    .background(PrimaryAccent, RoundedCornerShape(2.dp))
+            )
+            Text(
+                title,
+                color = TextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+        }
         Spacer(Modifier.height(8.dp))
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -327,14 +363,14 @@ fun TvAnimeSectionRow(
 @Composable
 fun TvAnimeCard(
     anime: Anime,
+    modifier: Modifier = Modifier.width(150.dp),
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (isFocused) 1.08f else 1.0f)
     
     Box(
-        modifier = Modifier
-            .width(150.dp)
+        modifier = modifier
             .onFocusChanged { isFocused = it.isFocused }
             .graphicsLayer {
                 scaleX = scale
@@ -385,11 +421,12 @@ fun TvAnimeCard(
             Spacer(Modifier.height(6.dp))
             Text(
                 text = anime.title,
-                color = if (isFocused) TextPrimary else TextSecondary,
+                color = if (isFocused) Color.White else TextSecondary,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
+                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                lineHeight = 16.sp,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }

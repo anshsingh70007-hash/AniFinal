@@ -56,7 +56,7 @@ class PlaybackFailoverController(
                 // Try to find an alternate server for the current provider
                 val alternateEndpoint = endpoints.firstOrNull { endpoint ->
                     endpoint.provider == currentProvider &&
-                    endpoint.server != currentEndpoint?.server &&
+                    endpoint.server.value != currentEndpoint?.server?.value &&
                     providerRegistry.getCircuitBreaker(currentProvider).canExecute()
                 }
 

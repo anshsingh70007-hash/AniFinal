@@ -76,6 +76,15 @@ class CircuitBreaker(
     }
 
     @Synchronized
+    fun forceResetIfStaleOpen(maxOpenDurationMs: Long) {
+        val now = clock.elapsedRealtime()
+        if (currentState == State.OPEN && now - lastStateChangeTime >= maxOpenDurationMs) {
+            reset()
+            android.util.Log.d("CircuitBreaker", "Self-Heal: Circuit breaker forced reset because it was OPEN for more than $maxOpenDurationMs ms.")
+        }
+    }
+
+    @Synchronized
     fun reset() {
         currentState = State.CLOSED
         samples.clear()
