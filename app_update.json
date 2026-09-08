@@ -1,8 +1,8 @@
 {
   "versionCode": 53,
   "versionName": "1.8.7",
-  "updateUrl": "https://media.githubusercontent.com/media/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.7-redesign.apk",
-  "updateNotes": "⚠️ IMPORTANT (ONE-TIME): Due to an official security & engine upgrade, please UNINSTALL your old AniFlow app first, then install v1.8.7. All future updates will update automatically with 1 tap!\n\n✨ What's New in v1.8.7:\n• AniFlow is back online!\n• Special visual tribute to Bleach: Thousand-Year Blood War - The Calamity thanking Tite Kubo.\n• All Anime Movies, OVAs, ONAs, and Specials now included in Search with format badges.\n• Smooth audio fading with zero clicks or pops when watching anime.\n• Smooth performance on both TV and Phone.",
+  "updateUrl": "https://github.com/anshsingh70007-hash/AniFinal/releases/download/v1.8.7/AniFinal_1.8.7-redesign.apk",
+  "updateNotes": "⚠️ IMPORTANT (ONE-TIME): Due to our new permanent release key, please UNINSTALL your old AniFlow app first, then install from GitHub:\nhttps://github.com/anshsingh70007-hash/AniFinal/releases/latest\n\n(All future updates after v1.8.7 will update seamlessly with 1 tap!)\n\n✨ What's New in v1.8.7:\n• Bleach: TYBW Part 4 (The Calamity) Spotlight & Kubo Tribute\n• All Anime Movies, OVAs, ONAs, and Specials now in Search with badges\n• Smooth background audio fading with zero pops when playing anime\n• One-click GitHub update installer support\n• Performance optimizations",
   "forceUpdate": false,
   "silentUpdate": false
 }

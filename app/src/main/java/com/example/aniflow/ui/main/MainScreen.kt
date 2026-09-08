@@ -1,8 +1,16 @@
 package com.example.aniflow.ui.main
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -626,9 +634,11 @@ fun UpdateTakeoverScreen(
     var visible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
     val deviceType = com.example.aniflow.LocalDeviceType.current
     val focusRequester = remember { FocusRequester() }
+    val githubReleaseUrl = "https://github.com/anshsingh70007-hash/AniFinal/releases/latest"
 
     LaunchedEffect(Unit) {
         visible = true
@@ -769,9 +779,59 @@ fun UpdateTakeoverScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val urlRegex = remember { Regex("""(https?://[^\s]+)""") }
+                            val notes = info.updateNotes
+                            val annotatedNotes = remember(notes) {
+                                buildAnnotatedString {
+                                    val matches = urlRegex.findAll(notes)
+                                    var lastEnd = 0
+                                    for (match in matches) {
+                                        val start = match.range.first
+                                        val end = match.range.last + 1
+                                        if (start > lastEnd) {
+                                            append(notes.substring(lastEnd, start))
+                                        }
+                                        val url = match.value
+                                        val linkStart = length
+                                        append(url)
+                                        val linkEnd = length
+                                        try {
+                                            addLink(
+                                                LinkAnnotation.Url(
+                                                    url = url,
+                                                    styles = TextLinkStyles(
+                                                        style = SpanStyle(
+                                                            color = PrimaryAccentLight,
+                                                            textDecoration = TextDecoration.Underline,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    )
+                                                ),
+                                                linkStart,
+                                                linkEnd
+                                            )
+                                        } catch (t: Throwable) {
+                                            addStyle(
+                                                SpanStyle(
+                                                    color = PrimaryAccentLight,
+                                                    textDecoration = TextDecoration.Underline,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                linkStart,
+                                                linkEnd
+                                            )
+                                            addStringAnnotation("URL", url, linkStart, linkEnd)
+                                        }
+                                        lastEnd = end
+                                    }
+                                    if (lastEnd < notes.length) {
+                                        append(notes.substring(lastEnd))
+                                    }
+                                }
+                            }
                             Text(
-                                text = info.updateNotes,
+                                text = annotatedNotes,
                                 color = TextSecondary,
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp
@@ -779,7 +839,7 @@ fun UpdateTakeoverScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(28.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     if (downloadProgress >= 0.0f) {
                         // Downloading state
@@ -807,27 +867,66 @@ fun UpdateTakeoverScreen(
                         )
                     } else {
                         // Action buttons
-                        if (downloadProgress == -1.0f) {
-                            Text(
-                                text = "Download failed. Please try again.",
-                                color = Color.Red,
-                                fontSize = 12.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // Download button with TV focus support
+                            if (downloadProgress == -1.0f) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFE53935).copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                                        .border(1.dp, Color(0xFFE53935).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                        .padding(12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "⚠️ One-Time Reinstall Required",
+                                        color = Color(0xFFFF6B6B),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Due to our new permanent security key, older apps cannot update in-place. Please uninstall your older app and install from GitHub.",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            // GitHub Install Button (Primary, clickable, D-pad focusable on TV)
                             UpdateButton(
-                                text = if (downloadProgress == -1.0f) "Retry Download" else "Download Now",
+                                text = "Install from GitHub",
                                 isPrimary = true,
                                 isRedesign = isRedesign,
                                 deviceType = deviceType,
                                 modifier = Modifier.focusRequester(focusRequester),
+                                onClick = {
+                                    try {
+                                        uriHandler.openUri(githubReleaseUrl)
+                                    } catch (e: Exception) {
+                                        try {
+                                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(githubReleaseUrl)).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(browserIntent)
+                                        } catch (err: Exception) {
+                                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            )
+
+                            // Direct In-App APK Download
+                            UpdateButton(
+                                text = if (downloadProgress == -1.0f) "Retry In-App Download" else "Direct APK Download",
+                                isPrimary = false,
+                                isRedesign = isRedesign,
+                                deviceType = deviceType,
                                 onClick = {
                                     downloadProgress = 0.0f
                                     onDownload { progress ->

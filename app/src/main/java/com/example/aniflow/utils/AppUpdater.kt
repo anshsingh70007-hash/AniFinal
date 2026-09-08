@@ -72,7 +72,7 @@ object AppUpdater {
             } catch (e: Exception) {
                 destinationFile.delete()
                 val message = when (e) {
-                    is SecurityException -> "Update rejected: ${e.message}"
+                    is SecurityException -> "One-time reinstall required: Please uninstall older app and install from GitHub."
                     else -> "Download failed: ${e.localizedMessage ?: e.javaClass.simpleName}"
                 }
                 withContext(Dispatchers.Main) {
