@@ -39,11 +39,21 @@ import com.example.aniflow.data.model.Episode
 import com.example.aniflow.data.repository.AnimeRepository
 import com.example.aniflow.data.WatchlistStore
 import com.example.aniflow.theme.*
-import com.example.aniflow.ui.redesign.components.AmbientBackground
 import com.example.aniflow.ui.redesign.components.GlassCard
 import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import com.example.aniflow.ui.redesign.theme.glassSurface
+import com.example.aniflow.ui.redesign.theme.BleachTybwTokens
+import com.example.aniflow.ui.redesign.theme.isBleachTybw
+import com.example.aniflow.ui.redesign.components.BleachReiatsuParticles
+import com.example.aniflow.ui.redesign.components.BleachBladeSlashSheen
+import com.example.aniflow.ui.redesign.components.BleachLightingBorderGlow
+import com.example.aniflow.ui.redesign.components.BleachElectricLightning
+import com.example.aniflow.ui.redesign.components.BleachTributePill
+import com.example.aniflow.ui.redesign.components.BleachBankaiButton
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.aniflow.R
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.blur
@@ -134,7 +144,13 @@ fun RedesignDetailScreen(
                 episodeChunks.getOrNull(selectedChunkIndex) ?: emptyList()
             }
 
-            AmbientBackground {
+            val isBleach = currentAnime.isBleachTybw()
+
+            Box(modifier = Modifier.fillMaxSize().background(if (isBleach) BleachTybwTokens.ReiatsuObsidian else PrimaryDark)) {
+                if (isBleach) {
+                    BleachElectricLightning(modifier = Modifier.fillMaxSize(), boltCount = 3)
+                }
+
                 val isBlurry = state is DetailUiState.Ambiguous || showFeedbackDialog
                 Box(modifier = Modifier.fillMaxSize()) {
                     Box(
@@ -159,7 +175,9 @@ fun RedesignDetailScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(PrimaryDark.copy(alpha = 0.5f))
+                                .background(
+                                    if (isBleach) BleachTybwTokens.ReiatsuObsidian.copy(alpha = 0.5f) else PrimaryDark.copy(alpha = 0.5f)
+                                )
                         )
                     }
 
@@ -169,7 +187,15 @@ fun RedesignDetailScreen(
                             .height(if (deviceType == DeviceType.TV) 380.dp else 260.dp)
                             .background(
                                 Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, PrimaryDark.copy(alpha = 0.6f), PrimaryDark),
+                                    colors = if (isBleach) listOf(
+                                        Color.Transparent,
+                                        BleachTybwTokens.ReiatsuDark.copy(alpha = 0.6f),
+                                        BleachTybwTokens.ReiatsuObsidian
+                                    ) else listOf(
+                                        Color.Transparent,
+                                        PrimaryDark.copy(alpha = 0.6f),
+                                        PrimaryDark
+                                    ),
                                     startY = 0f
                                 )
                             )
@@ -239,7 +265,11 @@ fun RedesignDetailScreen(
                                                 .width(160.dp)
                                                 .height(230.dp)
                                                 .clip(RoundedCornerShape(12.dp))
-                                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (isBleach) BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.15f),
+                                                    RoundedCornerShape(12.dp)
+                                                )
                                         )
 
                                         // TV right-side metadata Column
@@ -247,11 +277,21 @@ fun RedesignDetailScreen(
                                             modifier = Modifier.weight(1f),
                                             verticalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
+                                            if (isBleach) {
+                                                BleachTributePill()
+                                                Image(
+                                                    painter = painterResource(id = R.drawable.bleach_tybw_logo_crimson),
+                                                    contentDescription = "Bleach: TYBW",
+                                                    modifier = Modifier.height(36.dp)
+                                                )
+                                            }
+
                                             Text(
                                                 text = currentAnime.title,
-                                                color = TextPrimary,
+                                                color = if (isBleach) BleachTybwTokens.QuincyWhite else TextPrimary,
                                                 fontSize = 24.sp,
                                                 fontWeight = FontWeight.Bold,
+                                                fontFamily = if (isBleach) BleachTybwTokens.BleachFontFamily else null,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -276,7 +316,7 @@ fun RedesignDetailScreen(
                                                 currentAnime.averageScore?.let { score ->
                                                     Text(
                                                         "★ ${String.format("%.1f", score / 10.0)}",
-                                                        color = WarningAmber,
+                                                        color = if (isBleach) BleachTybwTokens.BankaiGold else WarningAmber,
                                                         fontWeight = FontWeight.Bold,
                                                         fontSize = 13.sp
                                                     )
@@ -346,7 +386,8 @@ fun RedesignDetailScreen(
                                                 currentAnime = currentAnime,
                                                 coroutineScope = coroutineScope,
                                                 onLeaveFeedback = { showFeedbackDialog = true },
-                                                watchHistoryEntry = watchHistoryEntry
+                                                watchHistoryEntry = watchHistoryEntry,
+                                                isBleach = isBleach
                                             )
                                         }
                                     }
@@ -354,6 +395,16 @@ fun RedesignDetailScreen(
                             } else {
                                 // Phone stacked layout with overlapping style
                                 Column(modifier = Modifier.padding(16.dp)) {
+                                    if (isBleach) {
+                                        BleachTributePill()
+                                        Spacer(Modifier.height(8.dp))
+                                        Image(
+                                            painter = painterResource(id = R.drawable.bleach_tybw_logo_crimson),
+                                            contentDescription = "Bleach: TYBW",
+                                            modifier = Modifier.height(30.dp)
+                                        )
+                                        Spacer(Modifier.height(10.dp))
+                                    }
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
@@ -366,16 +417,21 @@ fun RedesignDetailScreen(
                                                 .width(90.dp)
                                                 .height(130.dp)
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (isBleach) BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f),
+                                                    RoundedCornerShape(8.dp)
+                                                )
                                         )
 
                                         // Phone title / stats Column
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = currentAnime.title,
-                                                color = TextPrimary,
-                                                fontSize = 20.sp,
+                                                color = if (isBleach) BleachTybwTokens.QuincyWhite else TextPrimary,
+                                                fontSize = if (isBleach) 18.sp else 20.sp,
                                                 fontWeight = FontWeight.Bold,
+                                                fontFamily = if (isBleach) BleachTybwTokens.BleachFontFamily else null,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -402,7 +458,7 @@ fun RedesignDetailScreen(
                                                 currentAnime.averageScore?.let { score ->
                                                     Text(
                                                         "★ ${String.format("%.1f", score / 10.0)}",
-                                                        color = WarningAmber,
+                                                        color = if (isBleach) BleachTybwTokens.BankaiGold else WarningAmber,
                                                         fontWeight = FontWeight.Bold,
                                                         fontSize = 12.sp
                                                     )
@@ -476,7 +532,8 @@ fun RedesignDetailScreen(
                                         currentAnime = currentAnime,
                                         coroutineScope = coroutineScope,
                                         onLeaveFeedback = { showFeedbackDialog = true },
-                                        watchHistoryEntry = watchHistoryEntry
+                                        watchHistoryEntry = watchHistoryEntry,
+                                        isBleach = isBleach
                                     )
                                 }
                             }
@@ -553,7 +610,8 @@ fun RedesignDetailScreen(
                                 currentEpisodes.forEach { episode ->
                                     RedesignEpisodeCard(
                                         episode = episode,
-                                        onClick = { onEpisodeClick(episode.number) }
+                                        onClick = { onEpisodeClick(episode.number) },
+                                        isBleach = isBleach
                                     )
                                 }
                             }
@@ -683,41 +741,51 @@ private fun ActionButtonsRow(
     currentAnime: Anime,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     onLeaveFeedback: () -> Unit,
-    watchHistoryEntry: com.example.aniflow.data.model.WatchHistoryEntry?
+    watchHistoryEntry: com.example.aniflow.data.model.WatchHistoryEntry?,
+    isBleach: Boolean = false
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        var isPlayFocused by remember { mutableStateOf(false) }
         val targetEp = watchHistoryEntry?.episodeNumber ?: if (episodes.isNotEmpty()) episodes.first().number else 1
         val buttonLabel = if (watchHistoryEntry != null) "Continue Ep ${watchHistoryEntry.episodeNumber}" else "Play Episode 1"
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
-                .onFocusChanged { isPlayFocused = it.isFocused }
-                .focusGlow(isPlayFocused, RoundedCornerShape(24.dp), focusedScale = 1.02f)
-                .glassSurface(RoundedCornerShape(24.dp), isFocused = isPlayFocused)
-                .clickable {
-                    onEpisodeClick(targetEp)
+
+        if (isBleach) {
+            BleachBankaiButton(
+                text = "卍解 BANKAI • $buttonLabel",
+                onClick = { onEpisodeClick(targetEp) },
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            var isPlayFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .onFocusChanged { isPlayFocused = it.isFocused }
+                    .focusGlow(isPlayFocused, RoundedCornerShape(24.dp), focusedScale = 1.02f)
+                    .glassSurface(RoundedCornerShape(24.dp), isFocused = isPlayFocused)
+                    .clickable {
+                        onEpisodeClick(targetEp)
+                    }
+                    .focusable(),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = buttonLabel,
+                        color = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
                 }
-                .focusable(),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    tint = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = buttonLabel,
-                    color = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
             }
         }
 
@@ -735,7 +803,11 @@ private fun ActionButtonsRow(
             Icon(
                 imageVector = Icons.Default.Star,
                 contentDescription = "Feedback",
-                tint = if (isFeedbackFocused) GlassTokens.GlowCyan else TextPrimary,
+                tint = if (isFeedbackFocused) {
+                    if (isBleach) BleachTybwTokens.BankaiGold else GlassTokens.GlowCyan
+                } else {
+                    TextPrimary
+                },
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -762,7 +834,11 @@ private fun ActionButtonsRow(
             Icon(
                 imageVector = if (isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 contentDescription = "Watchlist",
-                tint = if (isBookmarked) GlassTokens.GlowRose else TextPrimary,
+                tint = if (isBookmarked) {
+                    if (isBleach) BleachTybwTokens.ReiatsuBlood else GlassTokens.GlowRose
+                } else {
+                    TextPrimary
+                },
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -772,7 +848,8 @@ private fun ActionButtonsRow(
 @Composable
 fun RedesignEpisodeCard(
     episode: Episode,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isBleach: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -780,8 +857,33 @@ fun RedesignEpisodeCard(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.isFocused }
-            .focusGlow(isFocused, RoundedCornerShape(12.dp), focusedScale = 1.03f)
-            .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+            .focusGlow(
+                isFocused = isFocused,
+                shape = RoundedCornerShape(12.dp),
+                focusedScale = 1.03f,
+                glowColors = if (isBleach) listOf(
+                    BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.65f),
+                    BleachTybwTokens.BankaiGold.copy(alpha = 0.45f),
+                    BleachTybwTokens.ReiatsuBlood.copy(alpha = 0.25f),
+                    Color.Transparent
+                ) else null
+            )
+            .let { mod ->
+                if (isBleach) {
+                    mod
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isFocused) BleachTybwTokens.ReiatsuDark.copy(alpha = 0.98f) else BleachTybwTokens.ReiatsuObsidian.copy(alpha = 0.85f)
+                        )
+                        .border(
+                            1.dp,
+                            if (isFocused) BleachTybwTokens.BankaiGold else BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.35f),
+                            RoundedCornerShape(12.dp)
+                        )
+                } else {
+                    mod.glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+                }
+            }
             .clickable { onClick() }
             .focusable()
     ) {
@@ -795,32 +897,62 @@ fun RedesignEpisodeCard(
                 modifier = Modifier
                     .size(width = 80.dp, height = 48.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Color.White.copy(alpha = 0.05f)),
+                    .background(if (isBleach) BleachTybwTokens.ReiatsuDark else Color.White.copy(alpha = 0.05f))
+                    .border(
+                        1.dp,
+                        if (isBleach) BleachTybwTokens.ReiatsuBlood.copy(alpha = 0.6f) else Color.Transparent,
+                        RoundedCornerShape(6.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "${episode.number}",
-                    color = GlassTokens.GlowCyan,
+                    color = if (isBleach) BleachTybwTokens.ReiatsuBlood else GlassTokens.GlowCyan,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = if (isBleach) BleachTybwTokens.BleachFontFamily else null
                 )
             }
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = episode.name,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (isBleach) {
+                        Image(
+                            painter = painterResource(id = R.drawable.bleach_shinigami_skull_crimson),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Text(
+                        text = episode.name,
+                        color = if (isBleach && isFocused) BleachTybwTokens.BankaiGold else TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             Icon(
                 imageVector = Icons.Rounded.PlayArrow,
                 contentDescription = null,
-                tint = if (isFocused) GlassTokens.GlowCyan else GlassTokens.TextMuted.copy(alpha = 0.6f),
+                tint = if (isBleach) {
+                    if (isFocused) BleachTybwTokens.BankaiGold else BleachTybwTokens.ReiatsuBlood
+                } else {
+                    if (isFocused) GlassTokens.GlowCyan else GlassTokens.TextMuted.copy(alpha = 0.6f)
+                },
                 modifier = Modifier.size(24.dp)
+            )
+        }
+
+        if (isBleach && isFocused) {
+            BleachLightingBorderGlow(
+                modifier = Modifier.matchParentSize(),
+                shape = RoundedCornerShape(12.dp),
+                strokeWidth = 2.dp
             )
         }
     }

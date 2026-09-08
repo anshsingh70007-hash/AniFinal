@@ -100,7 +100,7 @@ class PlayerViewModel(
     init {
         viewModelScope.launch {
             try {
-                playbackSpeed.value = withTimeoutOrNull(100L) {
+                playbackSpeed.value = withTimeoutOrNull(1500L) {
                     settingsStore.defaultPlaybackSpeed.first()
                 } ?: 1.0f
             } catch (e: Throwable) {
@@ -109,7 +109,7 @@ class PlayerViewModel(
         }
         viewModelScope.launch {
             try {
-                selectedVideoQuality.value = withTimeoutOrNull(100L) {
+                selectedVideoQuality.value = withTimeoutOrNull(1500L) {
                     settingsStore.qualityPreference.first()
                 } ?: "auto"
             } catch (e: Throwable) {
@@ -118,7 +118,7 @@ class PlayerViewModel(
         }
         viewModelScope.launch {
             try {
-                val lang = withTimeoutOrNull(100L) {
+                val lang = withTimeoutOrNull(1500L) {
                     settingsStore.languagePreference.first()
                 } ?: "sub"
                 selectedAudioType.value = if (lang.lowercase() == "dub") AudioType.DUB else AudioType.SUB
@@ -290,7 +290,7 @@ class PlayerViewModel(
             try {
                 // Snapshot the preferred provider flow when a playback session starts
                 val preferred = try {
-                    withTimeoutOrNull(100L) {
+                    withTimeoutOrNull(1500L) {
                         settingsStore.providerPreference.first()
                     }?.lowercase() ?: "anilight"
                 } catch (e: Throwable) {

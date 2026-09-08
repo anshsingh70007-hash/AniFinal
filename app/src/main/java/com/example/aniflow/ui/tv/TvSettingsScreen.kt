@@ -62,9 +62,9 @@ fun TvSettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(PrimaryDark)
-            .padding(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 48.dp)
+            .then(if (isRedesign) Modifier else Modifier.background(PrimaryDark))
             .verticalScroll(rememberScrollState())
+            .padding(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 48.dp)
     ) {
         Text("Settings", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(24.dp))
@@ -82,7 +82,7 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Default Playback Speed
         TvSettingsRow(
@@ -104,7 +104,7 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Auto-Play Next Episode
         TvSettingsRow(
@@ -118,9 +118,9 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
         Text("Data Management", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Clear History row
         TvSettingsRow(
@@ -133,7 +133,7 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Clear Watchlist row
         TvSettingsRow(
@@ -148,9 +148,9 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
         Text("Updates & Version", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Check updates on startup
         TvSettingsRow(
@@ -164,7 +164,7 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Check for Updates row
         TvSettingsRow(
@@ -209,7 +209,7 @@ fun TvSettingsScreen(
             }
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         // App Version
         TvSettingsRow(
@@ -234,13 +234,13 @@ fun TvSettingsRow(
         Modifier
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.isFocused }
-            .focusGlow(isFocused, shape = RoundedCornerShape(12.dp))
             .glassSurface(shape = RoundedCornerShape(12.dp), borderWidth = 1.dp, isFocused = isFocused)
+            .focusGlow(isFocused, shape = RoundedCornerShape(12.dp), focusedScale = 1.02f)
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null
             ) { onClick() }
-            .padding(16.dp)
+            .padding(horizontal = 24.dp, vertical = 18.dp)
     } else {
         Modifier
             .fillMaxWidth()

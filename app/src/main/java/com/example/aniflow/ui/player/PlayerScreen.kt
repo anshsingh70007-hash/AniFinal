@@ -419,13 +419,15 @@ fun PlayerScreen(
             } else if (exoPlayer.playbackState == Player.STATE_READY && controlsVisible) {
                 // Update position display while paused so seeks are reflected
                 viewModel.currentPosition.value = exoPlayer.currentPosition
-                viewModel.totalDuration.value = exoPlayer.duration
+viewModel.totalDuration.value = exoPlayer.duration
             }
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying) {
-        if (controlsVisible && isPlaying) {
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(controlsVisible, isPlaying, lastInteractionTime, isOverlayVisible) {
+        if (controlsVisible && isPlaying && !isOverlayVisible) {
             delay(5000)
             controlsVisible = false
         }
@@ -478,17 +480,20 @@ fun PlayerScreen(
     // P-03: Pause-on-background lifecycle contract
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val currentEpForLifecycle by rememberUpdatedState(viewModel.episodeList.value.getOrNull(viewModel.currentEpisodeIndex.value))
-    DisposableEffect(lifecycleOwner, exoPlayer) {
+    DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                // Checkpoint progress and pause
-                val pos = exoPlayer.currentPosition
-                val dur = exoPlayer.duration
-                val ep = currentEpForLifecycle
-                if (pos > 0 && dur > 0 && ep != null) {
-                    viewModel.saveProgress(animeId, pos, dur, ep)
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                try {
+                    exoPlayer.pause()
+                    val pos = exoPlayer.currentPosition
+                    val dur = exoPlayer.duration
+                    val ep = currentEpForLifecycle
+                    if (pos > 0 && dur > 0 && ep != null) {
+                        viewModel.saveProgress(animeId, pos, dur, ep)
+                    }
+                } catch (e: Exception) {
+                    // ignore
                 }
-                exoPlayer.pause()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -505,6 +510,7 @@ fun PlayerScreen(
             .focusable()
             .onKeyEvent { event ->
                 if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    lastInteractionTime = System.currentTimeMillis()
                     val keyCode = event.nativeKeyEvent.keyCode
                     if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
                         return@onKeyEvent false
@@ -571,8 +577,12 @@ fun PlayerScreen(
                     .focusProperties { canFocus = !isOverlayVisible }
                     .pointerInput(Unit) {
                         detectTapGestures(
-                            onTap = { controlsVisible = !controlsVisible },
+                            onTap = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                controlsVisible = !controlsVisible
+                            },
                             onDoubleTap = { offset ->
+                                lastInteractionTime = System.currentTimeMillis()
                                 val halfWidth = size.width / 2
                                 if (offset.x < halfWidth) {
                                     exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
@@ -597,6 +607,7 @@ fun PlayerScreen(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
+                            keepScreenOn = true
                             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                             layoutParams = FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -605,6 +616,7 @@ fun PlayerScreen(
                         }
                     },
                     update = { playerView ->
+                        playerView.keepScreenOn = true
                         if (playerView.player != exoPlayer) {
                             playerView.player = exoPlayer
                         }
@@ -1155,7 +1167,7 @@ private fun buildPlaybackHeaders(
 ): Map<String, String> {
     val merged = LinkedHashMap<String, String>()
     globalHeaders?.forEach { (key, value) -> merged[key] = value }
-    source.headers?.forEach { (key, value) -> merged[key] = value }
+    source.headers.forEach { (key, value) -> merged[key] = value }
     if (!merged.containsKey("Referer")) {
         merged["Referer"] = "https://anilight.live"
     }

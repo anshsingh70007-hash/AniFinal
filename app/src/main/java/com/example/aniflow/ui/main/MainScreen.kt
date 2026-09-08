@@ -1,5 +1,8 @@
 package com.example.aniflow.ui.main
 
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -30,6 +33,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.darkGlassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
@@ -58,14 +63,12 @@ import com.example.aniflow.data.WatchHistoryStore
 import com.example.aniflow.data.WatchlistStore
 import com.example.aniflow.data.repository.AnimeRepository
 import com.example.aniflow.theme.*
-import com.example.aniflow.ui.*
 import com.example.aniflow.ui.phone.*
 import com.example.aniflow.ui.tv.*
 import com.example.aniflow.ui.tv.components.TvSideNavRail
 import com.example.aniflow.ui.tv.components.TvTopNavBar
 import com.example.aniflow.ui.redesign.*
 import com.example.aniflow.ui.redesign.theme.glassSurface
-import com.example.aniflow.ui.redesign.components.AmbientBackground
 
 @Composable
 fun MainScreen(
@@ -77,6 +80,9 @@ fun MainScreen(
     watchHistoryStore: WatchHistoryStore? = null,
     settingsStore: SettingsStore? = null,
     userFeedbackStore: UserFeedbackStore? = null,
+    // False while another destination sits on top of this one, so BACK there pops the back stack
+    // instead of being swallowed by the tab/exit handling below.
+    isTopDestination: Boolean = true,
     viewModel: MainScreenViewModel = run {
         val context = LocalContext.current.applicationContext
         val watchList = watchlistStore ?: WatchlistStore(context)
@@ -116,6 +122,32 @@ fun MainScreen(
         context.packageName.endsWith(".redesign")
     }
 
+    // BACK handling. The app previously had exactly one BackHandler (the player), so BACK from any
+    // sub-tab closed the app instead of returning to Home.
+    val activity = LocalActivity.current
+    val navBarFocusRequester = remember { FocusRequester() }
+    var navBarFocused by remember { mutableStateOf(false) }
+    var exitArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(exitArmed) {
+        if (exitArmed) {
+            delay(2_000)
+            exitArmed = false
+        }
+    }
+    BackHandler(enabled = isTopDestination) {
+        when {
+            // On TV, BACK from the content grid should land on the nav bar, not quit.
+            deviceType == DeviceType.TV && !navBarFocused ->
+                runCatching { navBarFocusRequester.requestFocus() }
+            currentTab != 0 -> viewModel.setTab(0)
+            exitArmed -> activity?.finish()
+            else -> {
+                exitArmed = true
+                Toast.makeText(context, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (updateInfo == null || !updateInfo!!.forceUpdate) {
             val contentModifier = if (updateInfo != null || showOnboarding) {
@@ -136,7 +168,8 @@ fun MainScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 40.dp, bottom = 12.dp),
+                                    .padding(top = 40.dp, bottom = 12.dp)
+                                    .onFocusChanged { navBarFocused = it.hasFocus },
                                 contentAlignment = Alignment.Center
                             ) {
                                 TvTopNavBar(
@@ -147,7 +180,8 @@ fun MainScreen(
                                         Icons.Default.Favorite to "Library",
                                         Icons.Default.Settings to "Settings"
                                     ),
-                                    onSelect = { viewModel.setTab(it) }
+                                    onSelect = { viewModel.setTab(it) },
+                                    selectedItemFocusRequester = navBarFocusRequester
                                 )
                             }
 
@@ -244,14 +278,8 @@ fun MainScreen(
                         }
                     }
 
-                    if (isRedesign) {
-                        AmbientBackground(modifier = modifier.fillMaxSize()) {
-                            tvContent()
-                        }
-                    } else {
-                        Box(modifier = modifier.fillMaxSize().background(PrimaryDark)) {
-                            tvContent()
-                        }
+                    Box(modifier = modifier.fillMaxSize().background(PrimaryDark)) {
+                        tvContent()
                     }
             } else {
                 Scaffold(
@@ -278,8 +306,8 @@ fun MainScreen(
 
                                 BoxWithConstraints(
                                     modifier = Modifier
-                                        .width(320.dp)
-                                        .height(64.dp)
+                                        .width(340.dp)
+                                        .height(68.dp)
                                         .darkGlassSurface(shape = CircleShape, borderWidth = 1.dp)
                                 ) {
                                     val tabWidth = maxWidth / 4
@@ -362,17 +390,45 @@ fun MainScreen(
                                                     },
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(
-                                                    imageVector = pair.first,
-                                                    contentDescription = pair.second,
-                                                    tint = iconColor,
-                                                    modifier = Modifier
-                                                        .graphicsLayer(
-                                                            scaleX = iconScale,
-                                                            scaleY = iconScale
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = pair.first,
+                                                        contentDescription = pair.second,
+                                                        tint = iconColor,
+                                                        modifier = Modifier
+                                                            .graphicsLayer(
+                                                                scaleX = iconScale,
+                                                                scaleY = iconScale
+                                                            )
+                                                            .size(24.dp)
+                                                    )
+                                                    
+                                                    // Active tab indicator dot
+                                                    AnimatedVisibility(
+                                                        visible = isSelected,
+                                                        enter = fadeIn() + expandIn(expandFrom = Alignment.Center),
+                                                        exit = fadeOut() + shrinkOut(shrinkTowards = Alignment.Center)
+                                                    ) {
+                                                        Spacer(Modifier.height(4.dp))
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(4.dp)
+                                                                .background(
+                                                                    color = GlassTokens.GlowCyan,
+                                                                    shape = CircleShape
+                                                                )
+                                                                .drawBehind {
+                                                                    drawCircle(
+                                                                        color = GlassTokens.GlowCyan.copy(alpha = 0.4f),
+                                                                        radius = 6.dp.toPx()
+                                                                    )
+                                                                }
                                                         )
-                                                        .size(24.dp)
-                                                )
+                                                    }
+                                                }
                                             }
                                         }
                                     }

@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
 }
+
+// Release signing material lives outside git (see .gitignore). If keystore.properties is missing
+// — a fresh clone, CI without secrets — release builds stay unsigned rather than silently falling
+// back to the debug key, whose password is public knowledge.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+  if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+val hasReleaseSigning = keystoreProps.getProperty("storeFile")
+  ?.let { rootProject.file(it).exists() } == true
 
 android {
     namespace = "com.example.aniflow"
@@ -11,8 +23,8 @@ android {
         applicationId = "com.example.aniflow"
         minSdk = 24
         targetSdk = 36
-        versionCode = 50
-        versionName = "1.8.5"
+        versionCode = 53
+        versionName = "1.8.7"
         buildConfigField("String", "PROVIDER_BACKEND_URL", "\"\"")
     }
 
@@ -25,6 +37,17 @@ android {
             dimension = "ui"
             applicationIdSuffix = ".redesign"
             versionNameSuffix = "-redesign"
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
         }
     }
 
@@ -80,6 +103,9 @@ dependencies {
   implementation("androidx.compose.foundation:foundation")
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
+  // Icons: material3 no longer pulls material-icons-core transitively, and it used to arrive via
+  // androidx.tv:tv-material (removed here as unused). Only the core icon set is used.
+  implementation("androidx.compose.material:material-icons-core")
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests
@@ -100,11 +126,8 @@ dependencies {
   // Navigation
   implementation(libs.androidx.navigation3.ui)
   implementation(libs.androidx.navigation3.runtime)
+  // Required by the ViewModelStoreNavEntryDecorator in Navigation.kt — entry-scoped ViewModels.
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-
-  // Compose for TV
-  implementation(libs.tv.foundation)
-  implementation(libs.tv.material)
 
   // Media3 (ExoPlayer)
   implementation(libs.media3.exoplayer)
@@ -125,12 +148,4 @@ dependencies {
   // Serialization
   implementation(libs.serialization.json)
   implementation(libs.androidx.datastore.preferences)
-
-  // Redesign UI Libraries
-  implementation(libs.haze)
-  implementation(libs.haze.materials)
-  implementation(libs.lottie.compose)
-  implementation(libs.orbital)
-  implementation(libs.konfetti.compose)
-  implementation(libs.androidx.palette)
 }

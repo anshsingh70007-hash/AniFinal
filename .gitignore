@@ -15,3 +15,10 @@
 local.properties
 /AniFinal.apk
 /.idea/
+
+# Release signing material — never commit these. Back them up outside the repo:
+# losing them means you can no longer ship an update to installed users.
+/keystore/
+/keystore.properties
+.kotlin/
+

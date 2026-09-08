@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.aniflow.data.*
 import com.example.aniflow.data.model.*
 import com.example.aniflow.data.repository.AnimeRepository
+import com.example.aniflow.ui.redesign.theme.isBleachTybw
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -182,8 +183,13 @@ class MainScreenViewModel(
                     val dismissedCode = settingsStore.dismissedVersionCode.first()
                     android.util.Log.d("MainScreenViewModel", "checkForUpdates: dismissedCode=$dismissedCode")
                     if (info.versionCode > currentVersionCode && info.versionCode != dismissedCode) {
-                        android.util.Log.d("MainScreenViewModel", "checkForUpdates: Setting updateInfo state!")
-                        _updateInfo.value = info
+                        if (info.silentUpdate) {
+                            android.util.Log.d("MainScreenViewModel", "checkForUpdates: Silent update (minor listing/episode fix). Skipping modal dialog to avoid bothering user.")
+                            // Do NOT show takeover update modal to bother user. The dynamic fixes and background sync apply seamlessly.
+                        } else {
+                            android.util.Log.d("MainScreenViewModel", "checkForUpdates: Major/UI feature update. Setting updateInfo state!")
+                            _updateInfo.value = info
+                        }
                     } else {
                         android.util.Log.d("MainScreenViewModel", "checkForUpdates: Conditions not met. info.versionCode=${info.versionCode}, currentVersionCode=$currentVersionCode, dismissedCode=$dismissedCode")
                     }
@@ -233,11 +239,11 @@ class MainScreenViewModel(
                 .debounce(300)
                 .distinctUntilChanged()
                 .collectLatest { query ->
-                    if (query.length >= 2) {
+                    if (query.isNotBlank()) {
                         _selectedGenre.value = null // clear genre when typing query
                         currentPage = 1
                         _hasNextPage.value = false
-                        performSearch(query, 1, reset = true)
+                        performSearch(query.trim(), 1, reset = true)
                     } else if (_selectedGenre.value == null) {
                         _searchResults.value = emptyList()
                         _hasNextPage.value = false
@@ -274,6 +280,40 @@ class MainScreenViewModel(
         }
     }
 
+    private suspend fun prioritizeBleachTybw(list: List<Anime>): List<Anime> {
+        if (list.isEmpty()) return list
+        val bleachCalamityIndex = list.indexOfFirst { 
+            it.id == 185874 || ((it.englishTitle ?: it.title).contains("Calamity", ignoreCase = true) && it.isBleachTybw()) 
+        }
+        if (bleachCalamityIndex >= 0) {
+            val bleachItem = list[bleachCalamityIndex]
+            val mutable = list.toMutableList()
+            mutable.removeAt(bleachCalamityIndex)
+            mutable.add(0, bleachItem)
+            return mutable
+        }
+        val anyBleachIndex = list.indexOfFirst { it.isBleachTybw() || it.id in listOf(185874, 169755, 116674) }
+        if (anyBleachIndex >= 0) {
+            val mutable = list.toMutableList()
+            mutable.removeAt(anyBleachIndex)
+            val part4Anime = repository.getAnimeDetail(185874).first()
+            if (part4Anime != null) {
+                mutable.add(0, part4Anime)
+                return mutable
+            }
+        }
+        return try {
+            val bleachAnime = repository.getAnimeDetail(185874).first()
+            if (bleachAnime != null) {
+                listOf(bleachAnime) + list.filter { it.id !in listOf(185874, 169755, 116674) }
+            } else {
+                list
+            }
+        } catch (e: Exception) {
+            list
+        }
+    }
+
     private fun loadData() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -283,7 +323,8 @@ class MainScreenViewModel(
                 val batch1 = listOf(
                     launch {
                         try {
-                            _trending.value = repository.getTrending().first()
+                            val rawTrending = repository.getTrending().first()
+                            _trending.value = prioritizeBleachTybw(rawTrending)
                         } catch (e: Exception) {
                             android.util.Log.e("MainScreenViewModel", "Error loading trending in loadData", e)
                         }
@@ -317,23 +358,28 @@ class MainScreenViewModel(
                 )
                 batch2.joinAll()
                 _isLoading.value = false // Let user interact early!
-                com.example.aniflow.ui.redesign.components.AppLoader.setLoaded(true)
 
-                // If trending still looks like fallback data, retry once after a delay
-                if (_trending.value.size <= 3 && _trending.value.firstOrNull()?.id == 1535) {
-                    android.util.Log.w("MainScreenViewModel", "Trending appears to be fallback data, retrying...")
+                // If trending is sparse, retry once after a brief delay
+                if (_trending.value.size <= 3) {
+                    android.util.Log.w("MainScreenViewModel", "Trending appears sparse, retrying...")
                     kotlinx.coroutines.delay(3000L)
                     val retryBatch1 = listOf(
                         launch {
                             try {
-                                _trending.value = repository.getTrending().first()
+                                val rawTrending = repository.getTrending().first()
+                                if (rawTrending.isNotEmpty() && rawTrending.size > _trending.value.size) {
+                                    _trending.value = prioritizeBleachTybw(rawTrending)
+                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         },
                         launch {
                             try {
-                                _airingToday.value = repository.getAiringToday().first()
+                                val rawAiring = repository.getAiringToday().first()
+                                if (rawAiring.isNotEmpty() && rawAiring.size > _airingToday.value.size) {
+                                    _airingToday.value = rawAiring
+                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
@@ -345,14 +391,20 @@ class MainScreenViewModel(
                     val retryBatch2 = listOf(
                         launch {
                             try {
-                                _popular.value = repository.getPopular().first()
+                                val rawPopular = repository.getPopular().first()
+                                if (rawPopular.isNotEmpty() && rawPopular.size > _popular.value.size) {
+                                    _popular.value = rawPopular
+                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         },
                         launch {
                             try {
-                                _seasonal.value = repository.getSeasonal().first()
+                                val rawSeasonal = repository.getSeasonal().first()
+                                if (rawSeasonal.isNotEmpty() && rawSeasonal.size > _seasonal.value.size) {
+                                    _seasonal.value = rawSeasonal
+                                }
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }

@@ -1,5 +1,6 @@
 package com.example.aniflow.ui.redesign
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -13,7 +14,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.theme.*
-import com.example.aniflow.ui.redesign.components.AmbientBackground
 import com.example.aniflow.ui.redesign.theme.GlassTokens
 
 @Composable
@@ -21,7 +21,7 @@ fun RedesignPhoneLibraryScreen(
     watchlist: List<Anime>,
     onAnimeClick: (Anime) -> Unit
 ) {
-    AmbientBackground {
+    Box(modifier = Modifier.fillMaxSize().background(PrimaryDark)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()

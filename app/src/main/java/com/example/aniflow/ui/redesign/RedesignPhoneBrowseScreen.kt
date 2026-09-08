@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.theme.*
-import com.example.aniflow.ui.redesign.components.AmbientBackground
 import com.example.aniflow.ui.redesign.components.GlassCard
 import com.example.aniflow.ui.redesign.theme.GlassTokens
 import com.example.aniflow.ui.redesign.theme.glassSurface
@@ -58,7 +57,7 @@ fun RedesignPhoneBrowseScreen(
         }
     }
 
-    AmbientBackground {
+    Box(modifier = Modifier.fillMaxSize().background(PrimaryDark)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()

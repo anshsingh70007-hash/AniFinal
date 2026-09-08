@@ -4,6 +4,8 @@ import android.os.Build
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -12,23 +14,28 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 fun Modifier.glassSurface(
     shape: Shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
     borderWidth: Dp = 1.dp,
-    isFocused: Boolean = false
+    isFocused: Boolean = false,
+    showBorderUnfocused: Boolean = false,
+    focusedBorderBrush: Brush? = null,
+    unfocusedBorderBrush: Brush? = null
 ): Modifier = this.composed {
-    val borderBrush = remember(isFocused) {
+    val borderBrush = remember(isFocused, focusedBorderBrush, unfocusedBorderBrush) {
         if (isFocused) {
-            Brush.linearGradient(
+            focusedBorderBrush ?: Brush.linearGradient(
                 colors = listOf(GlassTokens.GlowCyan, GlassTokens.GlowPurple)
             )
         } else {
-            Brush.linearGradient(
+            unfocusedBorderBrush ?: Brush.linearGradient(
                 colors = listOf(GlassTokens.BorderHighlightStart, GlassTokens.BorderHighlightEnd)
             )
         }
@@ -45,19 +52,26 @@ fun Modifier.glassSurface(
     this
         .clip(shape)
         .background(backgroundColor)
-        .border(borderWidth, borderBrush, shape)
+        .then(
+            if (isFocused || showBorderUnfocused || unfocusedBorderBrush != null) {
+                Modifier.border(borderWidth, borderBrush, shape)
+            } else {
+                Modifier
+            }
+        )
 }
 
 fun Modifier.focusGlow(
     isFocused: Boolean,
     shape: Shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    focusedScale: Float = 1.08f
+    focusedScale: Float = 1.08f,
+    glowColors: List<Color>? = null
 ): Modifier = this.composed {
     val scale by animateFloatAsState(
         targetValue = if (isFocused) focusedScale else 1.0f,
         animationSpec = spring(
-            dampingRatio = 0.55f,
-            stiffness = Spring.StiffnessLow
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
         ),
         label = "FocusScale"
     )
@@ -76,60 +90,24 @@ fun Modifier.focusGlow(
                 val strokeWidth = 8.dp.toPx()
                 val outline = shape.createOutline(size, layoutDirection, this)
                 
+                val colors = if (glowColors != null) {
+                    glowColors.map { it.copy(alpha = it.alpha * glowAlpha) }
+                } else {
+                    listOf(
+                        GlassTokens.GlowCyan.copy(alpha = glowAlpha),
+                        GlassTokens.GlowPurple.copy(alpha = glowAlpha * 0.5f),
+                        Color.Transparent
+                    )
+                }
+
                 // Draw a thick blurred accent border behind for premium glowing effect
                 drawOutline(
                     outline = outline,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            GlassTokens.GlowCyan.copy(alpha = glowAlpha),
-                            GlassTokens.GlowPurple.copy(alpha = glowAlpha * 0.5f),
-                            Color.Transparent
-                        )
-                    ),
+                    brush = Brush.linearGradient(colors = colors),
                     style = Stroke(width = strokeWidth)
                 )
             }
         }
-}
-
-fun Modifier.filmGrainOverlay(
-    grainOpacity: Float = 0.04f
-): Modifier = this.composed {
-    val infiniteTransition = rememberInfiniteTransition(label = "GrainTransition")
-    val frameState = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 150, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "GrainFrame"
-    )
-
-    this.drawWithContent {
-        drawContent()
-        
-        // Procedural film grain noise overlay without external bitmap
-        // Using points drawn pseudo-randomly to give dynamic cinema noise texture
-        val rand = java.util.Random((frameState.value * 1000).toLong())
-        val width = size.width
-        val height = size.height
-        
-        if (width > 0 && height > 0) {
-            val pointCount = (width * height * 0.0005f).toInt().coerceIn(100, 3000)
-            val points = List(pointCount) {
-                androidx.compose.ui.geometry.Offset(rand.nextFloat() * width, rand.nextFloat() * height)
-            }
-            
-            drawPoints(
-                points = points,
-                pointMode = PointMode.Points,
-                color = Color.White.copy(alpha = grainOpacity),
-                strokeWidth = 1.5.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-        }
-    }
 }
 
 fun Modifier.darkGlassSurface(
@@ -146,5 +124,86 @@ fun Modifier.darkGlassSurface(
         .clip(shape)
         .background(Color(0xD90F0E17)) // Premium 85% opaque dark slate background
         .border(borderWidth, borderBrush, shape)
+}
+
+/**
+ * Premium glass panel inspired by the visual reference designs.
+ * Use for hero info overlays, floating nav bars, and featured cards.
+ */
+fun Modifier.premiumGlassPanel(
+    shape: Shape = RoundedCornerShape(16.dp),
+    borderWidth: Dp = 1.dp,
+    isFocused: Boolean = false,
+    showTopHighlight: Boolean = true
+): Modifier = this.composed {
+    val borderBrush = remember(isFocused) {
+        if (isFocused) {
+            Brush.linearGradient(
+                colors = listOf(GlassTokens.GlowCyan, GlassTokens.GlowPurple)
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.08f),
+                    Color.White.copy(alpha = 0.03f)
+                )
+            )
+        }
+    }
+
+    this
+        .clip(shape)
+        .background(GlassTokens.GlassThin)
+        .border(borderWidth, borderBrush, shape)
+        .then(
+            if (showTopHighlight) {
+                Modifier.drawWithContent {
+                    drawContent()
+                    // Top-edge highlight line
+                    drawLine(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                GlassTokens.CardEdgeHighlight,
+                                Color.Transparent
+                            )
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, 0f),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+            } else Modifier
+        )
+}
+
+/**
+ * Press spring scale animation for tactile touch response on mobile.
+ */
+fun Modifier.pressSpring(): Modifier = this.composed {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "pressScale"
+    )
+    
+    this
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .pointerInput(Unit) {
+            detectTapGestures(
+                onPress = {
+                    isPressed = true
+                    try {
+                        tryAwaitRelease()
+                    } finally {
+                        isPressed = false
+                    }
+                }
+            )
+        }
 }
 

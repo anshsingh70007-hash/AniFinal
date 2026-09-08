@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cleartext HTTP is denied app-wide. Every endpoint AniFlow talks to is HTTPS:
+    graphql.anilist.co, api.anilight.live / anilight.live, megaplay.buzz, cdn.animex.su,
+    s4.anilist.co, raw.githubusercontent.com.
+
+    If a stream server is ever found to hand back an http:// URL, add a <domain-config
+    cleartextTrafficPermitted="true"> block naming ONLY that host — do not reopen base-config.
+-->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

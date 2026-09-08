@@ -1,8 +1,8 @@
 {
-  "versionCode": 50,
-  "versionName": "1.8.5",
-  "updateUrl": "https://media.githubusercontent.com/media/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.5-redesign.apk",
-  "updateNotes": "Bug fixes only: resolved disappearing feedbacks, fixed video player load delay, corrected TV browse scrolling layouts, fixed missing episode listings, and restored continue watching resumes.",
+  "versionCode": 53,
+  "versionName": "1.8.7",
+  "updateUrl": "https://media.githubusercontent.com/media/anshsingh70007-hash/AniFinal/main/releases/AniFinal_1.8.7-redesign.apk",
+  "updateNotes": "AniFlow is back online! We added special visual effects for special anime, including a grand tribute to Bleach: Thousand-Year Blood War - The Calamity thanking Tite Kubo for creating Bleach. Plus, all anime movies, OVAs, and ONAs now appear in search, background music fades smoothly when watching episodes, and the app is smoother than ever on both TV and Phone.",
   "forceUpdate": false,
   "silentUpdate": false
 }

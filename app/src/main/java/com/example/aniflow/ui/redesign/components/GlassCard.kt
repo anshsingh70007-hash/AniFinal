@@ -21,6 +21,9 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
     borderWidth: Dp = 1.dp,
+    glowColors: List<androidx.compose.ui.graphics.Color>? = null,
+    focusedBorderBrush: androidx.compose.ui.graphics.Brush? = null,
+    unfocusedBorderBrush: androidx.compose.ui.graphics.Brush? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val deviceType = com.example.aniflow.LocalDeviceType.current
@@ -29,11 +32,25 @@ fun GlassCard(
     val baseModifier = if (deviceType == com.example.aniflow.DeviceType.TV) {
         modifier
             .onFocusChanged { isFocused = it.isFocused }
-            .focusGlow(isFocused, shape)
-            .glassSurface(shape, borderWidth, isFocused)
+            .focusGlow(isFocused, shape, glowColors = glowColors)
+            .glassSurface(
+                shape = shape,
+                borderWidth = borderWidth,
+                isFocused = isFocused,
+                showBorderUnfocused = unfocusedBorderBrush != null,
+                focusedBorderBrush = focusedBorderBrush,
+                unfocusedBorderBrush = unfocusedBorderBrush
+            )
     } else {
         modifier
-            .glassSurface(shape, borderWidth, false)
+            .glassSurface(
+                shape = shape,
+                borderWidth = borderWidth,
+                isFocused = false,
+                showBorderUnfocused = unfocusedBorderBrush != null,
+                focusedBorderBrush = focusedBorderBrush,
+                unfocusedBorderBrush = unfocusedBorderBrush
+            )
     }
 
     Box(

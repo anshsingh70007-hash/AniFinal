@@ -31,6 +31,7 @@ import com.example.aniflow.data.model.ProviderStatus
 import com.example.aniflow.theme.*
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
+import kotlinx.coroutines.delay
 
 @Composable
 fun AdvancedServerProviderSelector(
@@ -81,6 +82,18 @@ fun AdvancedServerProviderSelector(
             List(visibleProviders.size) { FocusRequester() },
             List(totalOptionsCount) { FocusRequester() }
         )
+    }
+
+    LaunchedEffect(Unit) {
+        if (deviceType == DeviceType.TV && focusRequesters.first.isNotEmpty()) {
+            delay(100)
+            try {
+                val activeIdx = visibleProviders.indexOf(activeProvider).coerceAtLeast(0)
+                focusRequesters.first[activeIdx].requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
     }
 
     val cardColor = if (isRedesign) {

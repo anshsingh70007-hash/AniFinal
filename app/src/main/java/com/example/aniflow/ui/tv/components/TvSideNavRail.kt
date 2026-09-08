@@ -20,6 +20,8 @@ import com.example.aniflow.theme.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import com.example.aniflow.ui.redesign.theme.GlassTokens
@@ -97,9 +99,12 @@ fun TvNavRailItem(
 fun TvTopNavBar(
     selectedIndex: Int,
     items: List<Pair<ImageVector, String>>,
-    onSelect: (Int) -> Unit
+    onSelect: (Int) -> Unit,
+    // Attached to the currently selected item so the caller can pull focus back onto the nav bar —
+    // used by MainScreen's BACK handling on TV.
+    selectedItemFocusRequester: FocusRequester? = null
 ) {
-    val focusRequesters = remember { List(items.size) { FocusRequester() } }
+    val focusRequesters = remember(items.size) { List(items.size) { FocusRequester() } }
     val context = LocalContext.current
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
 
@@ -126,7 +131,11 @@ fun TvTopNavBar(
                 icon = pair.first,
                 label = pair.second,
                 isSelected = selectedIndex == index,
-                focusRequester = focusRequesters[index],
+                focusRequester = if (index == selectedIndex && selectedItemFocusRequester != null) {
+                    selectedItemFocusRequester
+                } else {
+                    focusRequesters[index]
+                },
                 isRedesign = isRedesign,
                 onSelect = { onSelect(index) }
             )
@@ -136,7 +145,9 @@ fun TvTopNavBar(
     // Auto-focus the current index item on start
     LaunchedEffect(Unit) {
         if (selectedIndex in items.indices) {
-            focusRequesters[selectedIndex].requestFocus()
+            runCatching {
+                (selectedItemFocusRequester ?: focusRequesters[selectedIndex]).requestFocus()
+            }
         }
     }
 }
@@ -157,12 +168,26 @@ fun TvTopNavBarItem(
             .focusRequester(focusRequester)
             .onFocusChanged { isFocused = it.isFocused }
             .focusGlow(isFocused, shape = RoundedCornerShape(20.dp))
-            .glassSurface(shape = RoundedCornerShape(20.dp), borderWidth = 1.dp, isFocused = isSelected || isFocused)
+            .glassSurface(shape = RoundedCornerShape(20.dp), borderWidth = 1.dp, isFocused = isFocused)
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null
             ) { onSelect() }
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .then(
+                if (isSelected) {
+                    Modifier.drawWithContent {
+                        drawContent()
+                        // Glowing accent bottom underline
+                        drawLine(
+                            color = GlassTokens.GlowCyan,
+                            start = Offset(12.dp.toPx(), size.height),
+                            end = Offset(size.width - 12.dp.toPx(), size.height),
+                            strokeWidth = 3.dp.toPx()
+                        )
+                    }
+                } else Modifier
+            )
     } else {
         Modifier
             .focusRequester(focusRequester)
@@ -193,7 +218,7 @@ fun TvTopNavBarItem(
         Text(
             text = label,
             color = if (isSelected || isFocused) TextPrimary else TextSecondary,
-            fontSize = 14.sp,
+            fontSize = if (isRedesign) 16.sp else 14.sp,
             fontWeight = FontWeight.Bold
         )
     }

@@ -44,18 +44,10 @@ class AnikotoProvider(private val client: HttpClient) : EpisodeProvider {
     }
 
     override suspend fun getEpisodes(seriesId: ProviderSeriesId): EpisodeLookupResult {
-        val count = 24
-        val eps = (1..count).map { num ->
-            Episode(
-                id = num.toString(),
-                name = "Episode $num",
-                number = num
-            )
-        }
-        return EpisodeLookupResult.Matched(
-            provider = id,
-            seriesId = seriesId,
-            episodes = eps
+        // MegaPlay exposes no episode-list endpoint. This used to fabricate 24 episodes
+        // with no network call at all, which surfaced phantom episodes as real ones.
+        return EpisodeLookupResult.Error(
+            "Anikoto/MegaPlay has no episode list endpoint; it can only resolve a stream for an episode that is already known."
         )
     }
 

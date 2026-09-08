@@ -16,12 +16,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import com.example.aniflow.theme.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.onFocusChanged
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import com.example.aniflow.ui.redesign.theme.GlassTokens
+import kotlinx.coroutines.delay
 
 @Composable
 fun SpeedSelector(
@@ -33,6 +37,23 @@ fun SpeedSelector(
     val context = LocalContext.current
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
     val deviceType = com.example.aniflow.LocalDeviceType.current
+
+    val focusRequesters = remember(speeds.size) { List(speeds.size) { FocusRequester() } }
+    val selectedIndex = remember(speeds, selectedSpeed) {
+        val idx = speeds.indexOf(selectedSpeed)
+        if (idx >= 0) idx else 0
+    }
+
+    LaunchedEffect(Unit) {
+        if (deviceType == com.example.aniflow.DeviceType.TV && focusRequesters.isNotEmpty()) {
+            delay(100)
+            try {
+                focusRequesters[selectedIndex].requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
 
     val cardColor = if (isRedesign) {
         Color(0xFF0F0E17).copy(alpha = 0.98f)
@@ -71,13 +92,14 @@ fun SpeedSelector(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.heightIn(max = 240.dp)
                 ) {
-                    items(speeds) { speed ->
+                    itemsIndexed(speeds) { idx, speed ->
                         val isSelected = speed == selectedSpeed
                         var isFocused by remember { mutableStateOf(false) }
 
                         val itemModifier = if (isRedesign) {
                             Modifier
                                 .fillMaxWidth()
+                                .focusRequester(focusRequesters[idx])
                                 .onFocusChanged { isFocused = it.isFocused }
                                 .let { 
                                     if (deviceType == com.example.aniflow.DeviceType.TV) {
@@ -98,6 +120,7 @@ fun SpeedSelector(
                         } else {
                             Modifier
                                 .fillMaxWidth()
+                                .focusRequester(focusRequesters[idx])
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isSelected) PrimaryAccent else Color.Transparent)
                                 .clickable {

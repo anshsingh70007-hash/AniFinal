@@ -19,10 +19,13 @@ import androidx.compose.ui.window.Dialog
 import com.example.aniflow.data.model.SubtitleTrack
 import com.example.aniflow.theme.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import com.example.aniflow.ui.redesign.theme.glassSurface
 import com.example.aniflow.ui.redesign.theme.focusGlow
 import com.example.aniflow.ui.redesign.theme.GlassTokens
+import kotlinx.coroutines.delay
 
 @Composable
 fun SubtitleSelector(
@@ -34,21 +37,32 @@ fun SubtitleSelector(
     val context = LocalContext.current
     val isRedesign = remember { context.packageName.endsWith(".redesign") }
     val deviceType = com.example.aniflow.LocalDeviceType.current
+    val firstItemFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        if (deviceType == com.example.aniflow.DeviceType.TV) {
+            delay(100)
+            try {
+                firstItemFocusRequester.requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    val cardColor = if (isRedesign) {
+        Color(0xFF0F0E17).copy(alpha = 0.98f)
+    } else {
+        SurfaceCard
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = if (isRedesign) {
-                Modifier
-                    .width(280.dp)
-                    .wrapContentHeight()
-                    .glassSurface(shape = RoundedCornerShape(16.dp))
-            } else {
-                Modifier
-                    .width(280.dp)
-                    .wrapContentHeight()
-            },
+            modifier = Modifier
+                .width(280.dp)
+                .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            color = if (isRedesign) Color.Transparent else SurfaceCard,
+            color = cardColor,
             tonalElevation = 8.dp
         ) {
             Column(
@@ -73,6 +87,7 @@ fun SubtitleSelector(
                         val noneItemModifier = if (isRedesign) {
                             Modifier
                                 .fillMaxWidth()
+                                .focusRequester(firstItemFocusRequester)
                                 .onFocusChanged { isNoneFocused = it.isFocused }
                                 .let { 
                                     if (deviceType == com.example.aniflow.DeviceType.TV) {
@@ -93,6 +108,7 @@ fun SubtitleSelector(
                         } else {
                             Modifier
                                 .fillMaxWidth()
+                                .focusRequester(firstItemFocusRequester)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isNoneSelected) PrimaryAccent else Color.Transparent)
                                 .clickable {
