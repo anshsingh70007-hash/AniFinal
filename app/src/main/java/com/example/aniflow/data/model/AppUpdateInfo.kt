@@ -9,6 +9,6 @@ data class AppUpdateInfo(
     val updateUrl: String,
     val updateNotes: String? = null,
     val forceUpdate: Boolean = false,
-    val silentUpdate: Boolean = false
+    val silentUpdate: Boolean = false,
+    val maintenance: Boolean = false
 )
-

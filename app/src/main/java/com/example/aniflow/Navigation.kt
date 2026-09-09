@@ -3,6 +3,9 @@ package com.example.aniflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
@@ -15,14 +18,23 @@ import com.example.aniflow.ui.detail.DetailScreen
 import com.example.aniflow.ui.main.MainScreen
 import com.example.aniflow.ui.player.PlayerScreen
 import com.example.aniflow.ui.redesign.RedesignDetailScreen
-
 import com.example.aniflow.ui.redesign.audio.BleachBgmManager
 import com.example.aniflow.ui.redesign.components.AizenSpiritualPressureHost
+import com.example.aniflow.ui.maintenance.MaintenanceScreen
 
 @Composable
 fun MainNavigation() {
     val context = LocalContext.current
     val deviceType = LocalDeviceType.current
+
+    // Emergency maintenance lock: Immediately and effectively blocks all user screens
+    var isMaintenanceActive by remember { mutableStateOf(true) }
+
+    if (isMaintenanceActive) {
+        MaintenanceScreen(deviceType = deviceType)
+        return
+    }
+
     val repository = remember { DefaultAnimeRepository(context.applicationContext) }
     
     DisposableEffect(repository) {
@@ -52,9 +64,6 @@ fun MainNavigation() {
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
-        // Without these, every NavEntry shares the Activity's ViewModelStore and
-        // SaveableStateRegistry: Detail -> Detail keeps a single DetailViewModel, so
-        // popping back leaves the previous entry showing the newer anime's state.
         entryDecorators = listOf(
             rememberSaveableStateHolderNavEntryDecorator(),
             rememberViewModelStoreNavEntryDecorator()
@@ -70,7 +79,6 @@ fun MainNavigation() {
                         watchHistoryStore = watchHistoryStore,
                         settingsStore = settingsStore,
                         userFeedbackStore = userFeedbackStore,
-                        // NavDisplay handles BACK itself while anything is stacked on top of Main.
                         isTopDestination = backStack.size == 1
                     )
                 }
