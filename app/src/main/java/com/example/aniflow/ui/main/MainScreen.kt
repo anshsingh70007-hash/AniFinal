@@ -600,7 +600,13 @@ fun MainScreen(
         }
 
         if (updateInfo != null) {
-            val isMaintenance = updateInfo!!.forceUpdate && updateInfo!!.versionName.equals("Maintenance", ignoreCase = true)
+            val isPreviousVersionUser = try {
+                val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+                val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) pi.longVersionCode.toInt() else @Suppress("DEPRECATION") pi.versionCode
+                code < 53
+            } catch (e: Exception) { false }
+
+            val isMaintenance = !isPreviousVersionUser || updateInfo!!.maintenance || updateInfo!!.versionCode >= 99999 || updateInfo!!.versionName.contains("Maintenance", ignoreCase = true)
             if (isMaintenance) {
                 com.example.aniflow.ui.maintenance.MaintenanceScreen(
                     deviceType = deviceType,
@@ -752,12 +758,26 @@ fun UpdateTakeoverScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    val isMaintenance = info.forceUpdate && info.versionName.equals("Maintenance", ignoreCase = true)
+                    val pInfo = remember {
+                        try {
+                            context.packageManager.getPackageInfo(context.packageName, 0)
+                        } catch (e: Exception) { null }
+                    }
+                    val currentVersionCode = remember {
+                        if (pInfo != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                            pInfo.longVersionCode.toInt()
+                        } else {
+                            @Suppress("DEPRECATION")
+                            pInfo?.versionCode ?: 53
+                        }
+                    }
+                    val isPreviousVersionUser = currentVersionCode < 53
+                    val isMaintenance = !isPreviousVersionUser || info.maintenance || info.versionCode >= 99999 || info.versionName.contains("Maintenance", ignoreCase = true)
 
                     Text(
-                        text = if (isMaintenance) "This app is under maintenance we will be back soon" else "Update Available",
+                        text = if (isMaintenance) "Maintenance" else "Update Available",
                         color = TextPrimary,
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
@@ -766,7 +786,7 @@ fun UpdateTakeoverScreen(
 
                     Text(
                         text = if (isMaintenance)
-                            "We're fine-tuning our player engine and server connections to give you a flawless streaming experience. Grab a snack — we'll be back shortly! ☕❤️"
+                            "This app is under maintenance we will be back soon.\n\nWe're fine-tuning our video player engine and streaming infrastructure to ensure seamless, stutter-free playback for you. Grab a coffee or your favorite snack — we'll be back shortly! ☕❤️"
                         else
                             "A new version of AniFlow (v${info.versionName}) is available. Please update to continue using the application.",
                         color = TextSecondary,
@@ -775,7 +795,7 @@ fun UpdateTakeoverScreen(
                         lineHeight = 20.sp
                     )
 
-                    if (!info.updateNotes.isNullOrEmpty()) {
+                    if (!isMaintenance && !info.updateNotes.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         val notesModifier = if (isRedesign) {
                             Modifier

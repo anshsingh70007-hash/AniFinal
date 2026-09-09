@@ -586,7 +586,8 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 updateUrl = json.getString("updateUrl"),
                 updateNotes = if (json.isNull("updateNotes")) null else json.getString("updateNotes"),
                 forceUpdate = json.optBoolean("forceUpdate", false),
-                silentUpdate = json.optBoolean("silentUpdate", false)
+                silentUpdate = json.optBoolean("silentUpdate", false),
+                maintenance = json.optBoolean("maintenance", false)
             )
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Failed to check update", e)
