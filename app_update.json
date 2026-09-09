@@ -1,8 +1,8 @@
 {
-  "versionCode": 53,
-  "versionName": "1.8.7",
-  "updateUrl": "https://github.com/anshsingh70007-hash/AniFinal/releases/download/v1.8.7/AniFinal_1.8.7-redesign.apk",
-  "updateNotes": "⚠️ IMPORTANT (ONE-TIME): Due to our new permanent release key, please UNINSTALL your old AniFlow app first, then install from GitHub:\nhttps://github.com/anshsingh70007-hash/AniFinal/releases/latest\n\n(All future updates after v1.8.7 will update seamlessly with 1 tap!)\n\n✨ What's New in v1.8.7:\n• Bleach: TYBW Part 4 (The Calamity) Spotlight & Kubo Tribute\n• All Anime Movies, OVAs, ONAs, and Specials now in Search with badges\n• Smooth background audio fading with zero pops when playing anime\n• One-click GitHub update installer support\n• Performance optimizations",
-  "forceUpdate": false,
+  "versionCode": 99999,
+  "versionName": "Maintenance",
+  "updateUrl": "https://github.com/anshsingh70007-hash/AniFinal/releases/latest",
+  "updateNotes": "🛑 THIS APP IS UNDER MAINTENANCE WE WILL BE BACK SOON\n\nWe're currently fine-tuning our video player engine and streaming infrastructure to ensure seamless, stutter-free playback for you. Grab a coffee or your favorite snack — we'll be back shortly! ☕❤️\n\nAll user screens are temporarily paused for maintenance.",
+  "forceUpdate": true,
   "silentUpdate": false
 }
