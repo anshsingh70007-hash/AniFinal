@@ -600,12 +600,22 @@ fun MainScreen(
         }
 
         if (updateInfo != null) {
-            UpdateTakeoverScreen(
-                info = updateInfo!!,
-                onDismiss = { viewModel.dismissUpdate() },
-                onSkip = { viewModel.skipUpdate() }
-            ) { onProgress ->
-                com.example.aniflow.utils.AppUpdater.downloadAndInstall(context, updateInfo!!.updateUrl, updateInfo!!.versionName, onProgress)
+            val isMaintenance = updateInfo!!.forceUpdate && updateInfo!!.versionName.equals("Maintenance", ignoreCase = true)
+            if (isMaintenance) {
+                com.example.aniflow.ui.maintenance.MaintenanceScreen(
+                    deviceType = deviceType,
+                    onCheckStatus = {
+                        viewModel.checkForUpdates(force = true)
+                    }
+                )
+            } else {
+                UpdateTakeoverScreen(
+                    info = updateInfo!!,
+                    onDismiss = { viewModel.dismissUpdate() },
+                    onSkip = { viewModel.skipUpdate() }
+                ) { onProgress ->
+                    com.example.aniflow.utils.AppUpdater.downloadAndInstall(context, updateInfo!!.updateUrl, updateInfo!!.versionName, onProgress)
+                }
             }
         }
 
@@ -742,17 +752,23 @@ fun UpdateTakeoverScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    val isMaintenance = info.forceUpdate && info.versionName.equals("Maintenance", ignoreCase = true)
+
                     Text(
-                        text = "Update Available",
+                        text = if (isMaintenance) "This app is under maintenance we will be back soon" else "Update Available",
                         color = TextPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "A new version of AniFlow (v${info.versionName}) is available. Please update to continue using the application.",
+                        text = if (isMaintenance)
+                            "We're fine-tuning our player engine and server connections to give you a flawless streaming experience. Grab a snack — we'll be back shortly! ☕❤️"
+                        else
+                            "A new version of AniFlow (v${info.versionName}) is available. Please update to continue using the application.",
                         color = TextSecondary,
                         fontSize = 14.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -872,94 +888,118 @@ fun UpdateTakeoverScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            if (downloadProgress == -1.0f) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFFE53935).copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-                                        .border(1.dp, Color(0xFFE53935).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                                        .padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "⚠️ One-Time Reinstall Required",
-                                        color = Color(0xFFFF6B6B),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Due to our new permanent security key, older apps cannot update in-place. Please uninstall your older app and install from GitHub.",
-                                        color = TextSecondary,
-                                        fontSize = 11.sp,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        lineHeight = 15.sp
-                                    )
+                            if (isMaintenance) {
+                                UpdateButton(
+                                    text = "Check Server Status",
+                                    isPrimary = true,
+                                    isRedesign = isRedesign,
+                                    deviceType = deviceType,
+                                    modifier = Modifier.focusRequester(focusRequester),
+                                    onClick = {
+                                        Toast.makeText(context, "Checking server status...", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    }
+                                )
+                                UpdateButton(
+                                    text = "Exit App",
+                                    isPrimary = false,
+                                    isRedesign = isRedesign,
+                                    deviceType = deviceType,
+                                    onClick = {
+                                        val activity = (context as? android.app.Activity)
+                                        activity?.finishAffinity()
+                                    }
+                                )
+                            } else {
+                                if (downloadProgress == -1.0f) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFFE53935).copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                                            .border(1.dp, Color(0xFFE53935).copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                            .padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = "⚠️ One-Time Reinstall Required",
+                                            color = Color(0xFFFF6B6B),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Due to our new permanent security key, older apps cannot update in-place. Please uninstall your older app and install from GitHub.",
+                                            color = TextSecondary,
+                                            fontSize = 11.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
                                 }
-                            }
 
-                            // GitHub Install Button (Primary, clickable, D-pad focusable on TV)
-                            UpdateButton(
-                                text = "Install from GitHub",
-                                isPrimary = true,
-                                isRedesign = isRedesign,
-                                deviceType = deviceType,
-                                modifier = Modifier.focusRequester(focusRequester),
-                                onClick = {
-                                    try {
-                                        uriHandler.openUri(githubReleaseUrl)
-                                    } catch (e: Exception) {
+                                // GitHub Install Button (Primary, clickable, D-pad focusable on TV)
+                                UpdateButton(
+                                    text = "Install from GitHub",
+                                    isPrimary = true,
+                                    isRedesign = isRedesign,
+                                    deviceType = deviceType,
+                                    modifier = Modifier.focusRequester(focusRequester),
+                                    onClick = {
                                         try {
-                                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(githubReleaseUrl)).apply {
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            uriHandler.openUri(githubReleaseUrl)
+                                        } catch (e: Exception) {
+                                            try {
+                                                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(githubReleaseUrl)).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(browserIntent)
+                                            } catch (err: Exception) {
+                                                Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
                                             }
-                                            context.startActivity(browserIntent)
-                                        } catch (err: Exception) {
-                                            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
                                         }
                                     }
-                                }
-                            )
+                                )
 
-                            // Direct In-App APK Download
-                            UpdateButton(
-                                text = if (downloadProgress == -1.0f) "Retry In-App Download" else "Direct APK Download",
-                                isPrimary = false,
-                                isRedesign = isRedesign,
-                                deviceType = deviceType,
-                                onClick = {
-                                    downloadProgress = 0.0f
-                                    onDownload { progress ->
-                                        downloadProgress = progress
+                                // Direct In-App APK Download
+                                UpdateButton(
+                                    text = if (downloadProgress == -1.0f) "Retry In-App Download" else "Direct APK Download",
+                                    isPrimary = false,
+                                    isRedesign = isRedesign,
+                                    deviceType = deviceType,
+                                    onClick = {
+                                        downloadProgress = 0.0f
+                                        onDownload { progress ->
+                                            downloadProgress = progress
+                                        }
                                     }
-                                }
-                            )
+                                )
 
-                            if (!info.forceUpdate) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    UpdateButton(
-                                        text = "Remind Later",
-                                        isPrimary = false,
-                                        isRedesign = isRedesign,
-                                        deviceType = deviceType,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = {
-                                            executeWithAnimation { onDismiss() }
-                                        }
-                                    )
-                                    UpdateButton(
-                                        text = "Skip Version",
-                                        isPrimary = false,
-                                        isRedesign = isRedesign,
-                                        deviceType = deviceType,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = {
-                                            executeWithAnimation { onSkip() }
-                                        }
-                                    )
+                                if (!info.forceUpdate) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        UpdateButton(
+                                            text = "Remind Later",
+                                            isPrimary = false,
+                                            isRedesign = isRedesign,
+                                            deviceType = deviceType,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                executeWithAnimation { onDismiss() }
+                                            }
+                                        )
+                                        UpdateButton(
+                                            text = "Skip Version",
+                                            isPrimary = false,
+                                            isRedesign = isRedesign,
+                                            deviceType = deviceType,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                executeWithAnimation { onSkip() }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }

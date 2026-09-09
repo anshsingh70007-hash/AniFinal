@@ -137,15 +137,7 @@ class MainScreenViewModel(
         isCheckingUpdates = true
         viewModelScope.launch {
             try {
-                if (!force) {
-                    val autoCheckEnabled = settingsStore.checkUpdatesStartup.first()
-                    if (!autoCheckEnabled) return@launch
-                }
-
-                // Wait for network connection to establish on startup if not forced
-                if (!force) {
-                    kotlinx.coroutines.delay(3000L)
-                }
+                // Check immediately on startup to enforce emergency maintenance and updates
 
                 var retries = 2
                 var info: AppUpdateInfo? = null

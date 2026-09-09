@@ -56,7 +56,8 @@ private val TextWarmMuted = Color(0xFF8F88A0)
 @Composable
 fun MaintenanceScreen(
     deviceType: DeviceType,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCheckStatus: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context as? Activity }
@@ -68,11 +69,13 @@ fun MaintenanceScreen(
     if (deviceType == DeviceType.TV) {
         MaintenanceTvScreen(
             modifier = modifier,
+            onCheckStatus = onCheckStatus,
             onExit = { activity?.finish() }
         )
     } else {
         MaintenancePhoneScreen(
             modifier = modifier,
+            onCheckStatus = onCheckStatus,
             onExit = { activity?.finish() }
         )
     }
@@ -84,6 +87,7 @@ fun MaintenanceScreen(
 @Composable
 fun MaintenancePhoneScreen(
     modifier: Modifier = Modifier,
+    onCheckStatus: (() -> Unit)? = null,
     onExit: () -> Unit
 ) {
     val context = LocalContext.current
@@ -328,6 +332,7 @@ fun MaintenancePhoneScreen(
                             .clickable {
                                 if (!isChecking) {
                                     isChecking = true
+                                    onCheckStatus?.invoke()
                                     scope.launch {
                                         delay(1200L)
                                         isChecking = false
@@ -399,6 +404,7 @@ fun MaintenancePhoneScreen(
 @Composable
 fun MaintenanceTvScreen(
     modifier: Modifier = Modifier,
+    onCheckStatus: (() -> Unit)? = null,
     onExit: () -> Unit
 ) {
     val context = LocalContext.current
@@ -611,6 +617,7 @@ fun MaintenanceTvScreen(
                                 ) {
                                     if (!isChecking) {
                                         isChecking = true
+                                        onCheckStatus?.invoke()
                                         scope.launch {
                                             delay(1200L)
                                             isChecking = false
