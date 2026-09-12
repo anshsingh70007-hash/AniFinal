@@ -93,12 +93,14 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
     private val baseUrl = "https://api.anilight.live/api"
 
     private val KNOWN_SERVER_ORDER = listOf(
-        ServerId("light"),
-        ServerId("misa"),
-        ServerId("near"),
         ServerId("raye"),
+        ServerId("l"),
+        ServerId("mello"),
         ServerId("rem"),
         ServerId("ryu"),
+        ServerId("near"),
+        ServerId("misa"),
+        ServerId("light"),
         ServerId("meg")
     )
 
@@ -131,13 +133,22 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
     }
 
     private fun extractSeasonNumber(title: String): Int? {
-        val lower = title.lowercase()
+        val lower = title.lowercase().replace("-", " ")
         val match1 = Regex("season\\s*(\\d+)").find(lower)
         if (match1 != null) return match1.groupValues[1].toIntOrNull()
         val match2 = Regex("(\\d+)(st|nd|rd|th)\\s*season").find(lower)
         if (match2 != null) return match2.groupValues[1].toIntOrNull()
         val match3 = Regex("\\bs(\\d+)\\b").find(lower)
         if (match3 != null) return match3.groupValues[1].toIntOrNull()
+        return null
+    }
+
+    private fun extractPartNumber(title: String): Int? {
+        val lower = title.lowercase().replace("-", " ")
+        val match = Regex("part\\s*(\\d+)").find(lower)
+        if (match != null) return match.groupValues[1].toIntOrNull()
+        val matchCour = Regex("cour\\s*(\\d+)").find(lower)
+        if (matchCour != null) return matchCour.groupValues[1].toIntOrNull()
         return null
     }
 
@@ -178,11 +189,26 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             return 0.0
         }
 
-        // Season validation
+        // Strict Season validation across title and slug
         val identitySeason = extractSeasonNumber(identity.englishTitle ?: "") ?: extractSeasonNumber(identity.title)
-        val candidateSeason = extractSeasonNumber(candidate.title)
-        if (identitySeason != null && candidateSeason != null && identitySeason != candidateSeason) {
-            return 0.0 // Season mismatch
+        val candidateSeason = extractSeasonNumber(candidate.title) ?: extractSeasonNumber(candidate.slug)
+        val effIdentitySeason = identitySeason ?: 1
+        val effCandidateSeason = candidateSeason ?: 1
+        if (identitySeason != null || candidateSeason != null) {
+            if (effIdentitySeason != effCandidateSeason) {
+                return 0.0 // Strict season mismatch
+            }
+        }
+
+        // Strict Part validation across title and slug
+        val identityPart = extractPartNumber(identity.englishTitle ?: "") ?: extractPartNumber(identity.title)
+        val candidatePart = extractPartNumber(candidate.title) ?: extractPartNumber(candidate.slug)
+        val effIdentityPart = identityPart ?: 1
+        val effCandidatePart = candidatePart ?: 1
+        if (identityPart != null || candidatePart != null) {
+            if (effIdentityPart != effCandidatePart) {
+                return 0.0 // Strict part mismatch
+            }
         }
 
         val romajiScore = calculateSimilarity(candidate.title, identity.title)
@@ -215,6 +241,10 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             val cleaned = cleanTitleForSearch(t)
             if (cleaned.isNotEmpty() && !searchTitles.contains(cleaned)) {
                 searchTitles.add(cleaned)
+            }
+            val firstWords = t.split(Regex("[^a-zA-Z0-9]+")).filter { it.length > 2 }.take(3).joinToString(" ")
+            if (firstWords.isNotEmpty() && !searchTitles.contains(firstWords)) {
+                searchTitles.add(firstWords)
             }
         }
 
@@ -289,8 +319,33 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
     }
 
     override suspend fun resolve(request: EpisodeRequest): PlaybackResult {
-        val watchData = getWatchDataCached(request.seriesSlug)
-            ?: return PlaybackResult.Error(id, PlaybackErrorType.Network, "Failed to load watch details.")
+        var slug = request.seriesSlug
+        if (slug.contains(" ") || slug.isEmpty()) {
+            if (request.episodeId.startsWith("anilight:")) {
+                val candidate = request.episodeId.removePrefix("anilight:").substringBefore("|")
+                if (candidate.isNotEmpty() && !candidate.contains(" ")) {
+                    slug = candidate
+                }
+            } else if (request.episodeId.contains(":")) {
+                val candidate = request.episodeId.substringAfter(":").substringBefore("|")
+                if (candidate.isNotEmpty() && !candidate.contains(" ")) {
+                    slug = candidate
+                }
+            }
+        }
+        var watchData = getWatchDataCached(slug)
+        if (watchData == null) {
+            val searchResults = search(cleanTitleForSearch(request.seriesSlug))
+            val bestMatch = searchResults.firstOrNull { it.anilistId == request.animeId }
+                ?: searchResults.firstOrNull()
+            if (bestMatch != null) {
+                slug = bestMatch.slug
+                watchData = getWatchDataCached(slug)
+            }
+        }
+        if (watchData == null) {
+            return PlaybackResult.Error(id, PlaybackErrorType.Network, "Failed to load watch details.")
+        }
 
         val servers = watchData.servers
         val targetAudio = request.audioType
@@ -503,6 +558,9 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
             val isM3U8 = urls.any { it.contains(".m3u8") } || src.type == "hls"
 
             for (rawUrl in urls) {
+                if (rawUrl.contains("otakuhg.site") || (rawUrl.contains("/e/") && !rawUrl.contains(".m3u8"))) {
+                    continue
+                }
                 val mappedUrls = if (rawUrl.contains("/cachesub/")) {
                     val folder = rawUrl.substringAfter("/cachesub/").substringBefore("/")
                     if (folder.isNotEmpty() && folder != rawUrl) {
@@ -593,7 +651,11 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
     }
 
     private fun decryptUrl(url: String, providerId: String): List<String> {
-        if (providerId == "raye" && url.isNotEmpty()) {
+        if ((providerId == "raye" || providerId == "l") && url.isNotEmpty()) {
+            // Direct m3u8 streams from modern CDNs should be proxied directly via mapProxyUrl
+            if (url.contains(".m3u8", ignoreCase = true) || url.contains("krussdomi", ignoreCase = true) || url.startsWith("http")) {
+                return listOf(mapProxyUrl(url, providerId))
+            }
             try {
                 val key = "aproxy2026".toByteArray(Charsets.UTF_8)
                 val plaintext = (url + "\u0000https://kwik.cx").toByteArray(Charsets.UTF_8)
@@ -624,9 +686,9 @@ class AniLightProvider(private val client: HttpClient) : EpisodeProvider {
 
         val encoded = URLEncoder.encode(url, "UTF-8")
         return when (providerId) {
+            "l", "raye" -> "$baseUrl/lb/$providerId/proxy?url=$encoded"
             "near" -> "$baseUrl/lb/near/proxy?url=$encoded"
             "misa", "misora" -> "$baseUrl/lb/misa/proxy?url=$encoded"
-            "raye" -> "$baseUrl/lb/raye/proxy?url=$encoded"
             "ryu" -> "$baseUrl/proxy/ryu?url=$encoded"
             else -> "$baseUrl/proxy?url=$encoded"
         }

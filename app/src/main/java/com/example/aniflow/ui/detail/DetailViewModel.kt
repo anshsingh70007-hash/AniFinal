@@ -90,7 +90,25 @@ class DetailViewModel(
                 }
             }
             is EpisodeLookupResult.Ambiguous -> {
-                uiState.value = DetailUiState.Ambiguous(anime, result.candidates)
+                val firstWithEpisodes = result.candidates.take(3).firstNotNullOfOrNull { cand ->
+                    val candResult = repository.getEpisodesBySlug(ProviderId.ANILIGHT, ProviderSeriesId(cand.slug))
+                    if (candResult is EpisodeLookupResult.Matched && candResult.episodes.isNotEmpty()) {
+                        candResult
+                    } else null
+                }
+                if (firstWithEpisodes != null) {
+                    var episodes = firstWithEpisodes.episodes
+                    if (anime.status == "RELEASING" && anime.nextAiringEpisode != null) {
+                        val maxAvailableEp = anime.nextAiringEpisode - 1
+                        if (maxAvailableEp > 0) {
+                            episodes = episodes.filter { it.number <= maxAvailableEp }
+                        }
+                    }
+                    episodes = episodes.distinctBy { it.number }.sortedBy { it.number }
+                    uiState.value = DetailUiState.Success(anime, episodes)
+                } else {
+                    uiState.value = DetailUiState.Ambiguous(anime, result.candidates)
+                }
             }
             is EpisodeLookupResult.NotFound -> {
                 uiState.value = DetailUiState.NotFound(anime)

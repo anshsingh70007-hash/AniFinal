@@ -600,13 +600,7 @@ fun MainScreen(
         }
 
         if (updateInfo != null) {
-            val isPreviousVersionUser = try {
-                val pi = context.packageManager.getPackageInfo(context.packageName, 0)
-                val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) pi.longVersionCode.toInt() else @Suppress("DEPRECATION") pi.versionCode
-                code < 53
-            } catch (e: Exception) { false }
-
-            val isMaintenance = !isPreviousVersionUser || updateInfo!!.maintenance || updateInfo!!.versionCode >= 99999 || updateInfo!!.versionName.contains("Maintenance", ignoreCase = true)
+            val isMaintenance = updateInfo!!.maintenance || updateInfo!!.versionCode >= 99999 || updateInfo!!.versionName.contains("Maintenance", ignoreCase = true)
             if (isMaintenance) {
                 com.example.aniflow.ui.maintenance.MaintenanceScreen(
                     deviceType = deviceType,

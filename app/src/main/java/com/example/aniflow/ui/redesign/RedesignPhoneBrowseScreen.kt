@@ -114,7 +114,11 @@ fun RedesignPhoneBrowseScreen(
 
             // Results grid
             Box(modifier = Modifier.weight(1f)) {
-                if (results.isEmpty() && !isSearchLoading) {
+                if (isSearchLoading && results.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = GlassTokens.GlowCyan, modifier = Modifier.size(36.dp))
+                    }
+                } else if (results.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
                             text = if (query.isEmpty() && selectedGenre == null) "Select a genre or start searching..." else "No results found.",

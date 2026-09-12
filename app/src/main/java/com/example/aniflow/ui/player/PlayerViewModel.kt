@@ -231,6 +231,13 @@ class PlayerViewModel(
                             resolvedProvider = result.provider
                             result.episodes
                         }
+                        is EpisodeLookupResult.Ambiguous -> {
+                            val cand = result.candidates.firstOrNull()
+                            if (cand != null) {
+                                val candRes = repository.getEpisodesBySlug(resolvedProvider, ProviderSeriesId(cand.slug))
+                                if (candRes is EpisodeLookupResult.Matched) candRes.episodes else emptyList()
+                            } else emptyList()
+                        }
                         else -> emptyList()
                     }
 
@@ -244,6 +251,13 @@ class PlayerViewModel(
 
                     // Deduplicate and sort
                     eps = eps.distinctBy { it.number }.sortedBy { it.number }
+
+                    if (eps.isEmpty()) {
+                        errorMessage.value = "No playable episodes found for this anime. Please try again later."
+                        hasError.value = true
+                        isLoading.value = false
+                        return@launch
+                    }
 
                     episodeList.value = eps
                     val index = eps.indexOfFirst { it.number == episodeNumber }.coerceAtLeast(0)
@@ -308,9 +322,16 @@ class PlayerViewModel(
                 updateProviderStatuses()
 
                 val currentAnime = anime.value ?: return@launch
+                val slugFromEpisode = if (ep.id.startsWith("anilight:")) {
+                    ep.id.removePrefix("anilight:").substringBefore("|")
+                } else if (ep.id.contains(":")) {
+                    ep.id.substringAfter(":").substringBefore("|")
+                } else {
+                    currentAnime.title
+                }
                 val request = EpisodeRequest(
                     provider = activeProvider,
-                    seriesSlug = currentAnime.title,
+                    seriesSlug = slugFromEpisode,
                     episodeId = ep.id,
                     animeId = currentAnime.id,
                     episodeNumber = ep.number,
@@ -336,17 +357,57 @@ class PlayerViewModel(
                             selectedAudioType.value = fallbackAudio
                         }
 
-                        var chosenSource = langSources.firstOrNull()
+                        // Parallel connection status check with 1500ms timeout per AGENTS.md rule 7
+                        val verifiedSource = withContext(ioDispatcher) {
+                            coroutineScope {
+                                val deferreds = langSources.map { source ->
+                                    async {
+                                        val isLive = try {
+                                            withTimeoutOrNull(1500L) {
+                                                val status = repository.checkUrlStatus(source.url, source.headers)
+                                                status in 200..399
+                                            } ?: false
+                                        } catch (e: Exception) {
+                                            false
+                                        }
+                                        if (isLive) source else null
+                                    }
+                                }
+                                deferreds.map { it.await() }.firstOrNull { it != null }
+                            }
+                        }
+
+                        var chosenSource = verifiedSource
                         if (chosenSource == null) {
                             val fallbackAudio = if (selectedAudioType.value == AudioType.SUB) AudioType.DUB else AudioType.SUB
                             val fallbackSources = allSources.filter { it.audioType == fallbackAudio }
                             if (fallbackSources.isNotEmpty()) {
-                                chosenSource = fallbackSources.firstOrNull()
-                                selectedAudioType.value = fallbackAudio
+                                val verifiedFallback = withContext(ioDispatcher) {
+                                    coroutineScope {
+                                        val deferreds = fallbackSources.map { source ->
+                                            async {
+                                                val isLive = try {
+                                                    withTimeoutOrNull(1500L) {
+                                                        val status = repository.checkUrlStatus(source.url, source.headers)
+                                                        status in 200..399
+                                                    } ?: false
+                                                } catch (e: Exception) {
+                                                    false
+                                                }
+                                                if (isLive) source else null
+                                            }
+                                        }
+                                        deferreds.map { it.await() }.firstOrNull { it != null }
+                                    }
+                                }
+                                if (verifiedFallback != null) {
+                                    chosenSource = verifiedFallback
+                                    selectedAudioType.value = fallbackAudio
+                                }
                             }
                         }
                         if (chosenSource == null) {
-                            chosenSource = allSources.firstOrNull()
+                            chosenSource = langSources.firstOrNull() ?: allSources.firstOrNull()
                         }
 
                         if (currentGen != generationId) return@launch
@@ -397,9 +458,16 @@ class PlayerViewModel(
                 delay(delayMs)
 
                 val currentAnime = anime.value ?: return@launch
+                val slugFromEpisode = if (ep.id.startsWith("anilight:")) {
+                    ep.id.removePrefix("anilight:").substringBefore("|")
+                } else if (ep.id.contains(":")) {
+                    ep.id.substringAfter(":").substringBefore("|")
+                } else {
+                    currentAnime.title
+                }
                 val request = EpisodeRequest(
                     provider = activeProvider,
-                    seriesSlug = currentAnime.title,
+                    seriesSlug = slugFromEpisode,
                     episodeId = ep.id,
                     animeId = currentAnime.id,
                     episodeNumber = ep.number,

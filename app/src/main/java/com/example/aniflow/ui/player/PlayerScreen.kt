@@ -54,6 +54,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.example.aniflow.DeviceType
@@ -140,6 +142,10 @@ fun PlayerScreen(
             .build()
     }
 
+    val trackSelector = remember {
+        DefaultTrackSelector(context, AdaptiveTrackSelection.Factory())
+    }
+
     val httpDataSourceFactory = remember {
         androidx.media3.datasource.DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
@@ -207,6 +213,7 @@ fun PlayerScreen(
 
         val newPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setBandwidthMeter(bandwidthMeter)
             .setAudioAttributes(audioAttributes, true)
@@ -716,6 +723,7 @@ viewModel.totalDuration.value = exoPlayer.duration
                                     .glassSurface(shape = RoundedCornerShape(20.dp), borderWidth = 1.dp, isFocused = isBackFocused)
                                     .clickable { onBack() }
                                     .onFocusChanged { isBackFocused = it.isFocused }
+                                    .focusable()
                                     .padding(8.dp)
                             } else {
                                 Modifier
@@ -728,6 +736,7 @@ viewModel.totalDuration.value = exoPlayer.duration
                                     )
                                     .clickable { onBack() }
                                     .onFocusChanged { isBackFocused = it.isFocused }
+                                    .focusable()
                                     .padding(8.dp)
                             }
                             Box(
@@ -1189,7 +1198,13 @@ private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, qualityPolicy: Quali
     }
     
     if (targetHeight <= 0) {
-        exoPlayer.trackSelectionParameters = params.build()
+        val newParams = params.build()
+        if (exoPlayer.trackSelectionParameters != newParams) {
+            exoPlayer.trackSelectionParameters = newParams
+            if (exoPlayer.playbackState == Player.STATE_READY) {
+                exoPlayer.seekTo(exoPlayer.currentPosition)
+            }
+        }
         return
     }
     

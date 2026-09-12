@@ -25,6 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.key.onKeyEvent
 import com.example.aniflow.data.model.Anime
 import com.example.aniflow.theme.*
 import com.example.aniflow.ui.redesign.components.GlassCard
@@ -47,6 +52,8 @@ fun RedesignTvBrowseScreen(
     val genres = remember {
         listOf("Action", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Adventure", "Suspense", "Slice of Life")
     }
+    val firstGenreFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(140.dp),
@@ -63,9 +70,36 @@ fun RedesignTvBrowseScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .glassSurface(RoundedCornerShape(12.dp)),
+                    .glassSurface(RoundedCornerShape(12.dp))
+                    .onKeyEvent { keyEvent ->
+                        val native = keyEvent.nativeKeyEvent
+                        if (native.action == android.view.KeyEvent.ACTION_DOWN) {
+                            if (native.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+                                try {
+                                    firstGenreFocusRequester.requestFocus()
+                                    return@onKeyEvent true
+                                } catch (e: Exception) {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    return@onKeyEvent true
+                                }
+                            }
+                        }
+                        false
+                    },
                 placeholder = { Text("Search upcoming & popular anime...", color = GlassTokens.TextMuted) },
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSearch = {
+                        try {
+                            firstGenreFocusRequester.requestFocus()
+                        } catch (e: Exception) {
+                            focusManager.clearFocus()
+                        }
+                    }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -94,16 +128,19 @@ fun RedesignTvBrowseScreen(
                         RedesignTvGenreChip(
                             text = "Clear Filter (X)",
                             isSelected = true,
-                            onClick = { onGenreSelect(null) }
+                            onClick = { onGenreSelect(null) },
+                            modifier = Modifier.focusRequester(firstGenreFocusRequester)
                         )
                     }
                 }
-                items(genres) { genre ->
+                items(genres.size) { index ->
+                    val genre = genres[index]
                     val isSelected = selectedGenre == genre
                     RedesignTvGenreChip(
                         text = genre,
                         isSelected = isSelected,
-                        onClick = { onGenreSelect(if (isSelected) null else genre) }
+                        onClick = { onGenreSelect(if (isSelected) null else genre) },
+                        modifier = if (selectedGenre == null && index == 0) Modifier.focusRequester(firstGenreFocusRequester) else Modifier
                     )
                 }
             }
@@ -225,12 +262,13 @@ fun RedesignTvBrowseScreen(
 fun RedesignTvGenreChip(
     text: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
     
     Box(
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged { isFocused = it.isFocused }
             .focusGlow(isFocused, RoundedCornerShape(16.dp))
             .glassSurface(

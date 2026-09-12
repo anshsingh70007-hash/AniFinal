@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 
 class MainScreenViewModel(
     private val repository: AnimeRepository,
@@ -223,6 +225,7 @@ class MainScreenViewModel(
     val isSearchLoading = _isSearchLoading.asStateFlow()
 
     private var currentPage = 1
+    private var searchJob: Job? = null
 
     @OptIn(FlowPreview::class)
     private fun setupSearchDebounce() {
@@ -235,18 +238,21 @@ class MainScreenViewModel(
                         _selectedGenre.value = null // clear genre when typing query
                         currentPage = 1
                         _hasNextPage.value = false
-                        performSearch(query.trim(), 1, reset = true)
+                        searchJob?.cancel()
+                        searchJob = viewModelScope.launch {
+                            performSearch(query.trim(), 1, reset = true)
+                        }
                     } else if (_selectedGenre.value == null) {
-                        _searchResults.value = emptyList()
+                        searchJob?.cancel()
                         _hasNextPage.value = false
                         currentPage = 1
+                        loadDefaultBrowseAnime()
                     }
                 }
         }
     }
 
     private suspend fun performSearch(query: String, page: Int, reset: Boolean) {
-        if (_isSearchLoading.value && reset) return
         _isSearchLoading.value = true
         try {
             val searchPage = repository.searchAnime(query, page).first()
@@ -257,6 +263,8 @@ class MainScreenViewModel(
             }
             _hasNextPage.value = searchPage.hasNextPage
             currentPage = searchPage.currentPage
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -267,7 +275,7 @@ class MainScreenViewModel(
     fun loadNextSearchPage() {
         val query = _searchQuery.value
         if (query.length < 2 || !_hasNextPage.value || _isSearchLoading.value) return
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             performSearch(query, currentPage + 1, reset = false)
         }
     }
@@ -316,7 +324,7 @@ class MainScreenViewModel(
                     launch {
                         try {
                             val rawTrending = repository.getTrending().first()
-                            _trending.value = prioritizeBleachTybw(rawTrending)
+                            _trending.value = rawTrending
                         } catch (e: Exception) {
                             android.util.Log.e("MainScreenViewModel", "Error loading trending in loadData", e)
                         }
@@ -360,7 +368,7 @@ class MainScreenViewModel(
                             try {
                                 val rawTrending = repository.getTrending().first()
                                 if (rawTrending.isNotEmpty() && rawTrending.size > _trending.value.size) {
-                                    _trending.value = prioritizeBleachTybw(rawTrending)
+                                    _trending.value = rawTrending
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()
@@ -452,16 +460,19 @@ class MainScreenViewModel(
     }
 
     fun onGenreSelected(genre: String?) {
+        searchJob?.cancel()
         _selectedGenre.value = genre
         if (genre != null) {
             _searchQuery.value = "" // clear search input when selecting genre
             currentPage = 1
             _hasNextPage.value = false
-            viewModelScope.launch {
+            searchJob = viewModelScope.launch {
                 _isSearchLoading.value = true
                 try {
                     val list = repository.getAnimeByGenre(genre).first()
                     _searchResults.value = list
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
@@ -469,15 +480,36 @@ class MainScreenViewModel(
                 }
             }
         } else {
-            _searchResults.value = emptyList()
-            _hasNextPage.value = false
             currentPage = 1
+            _hasNextPage.value = false
+            loadDefaultBrowseAnime()
         }
     }
 
-
     fun setTab(index: Int) {
         _currentTab.value = index
+        if (index == 1 && _searchResults.value.isEmpty() && _searchQuery.value.isBlank() && _selectedGenre.value == null) {
+            loadDefaultBrowseAnime()
+        }
+    }
+
+    private fun loadDefaultBrowseAnime() {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isSearchLoading.value = true
+            try {
+                val list = _popular.value.ifEmpty { _trending.value }.ifEmpty {
+                    repository.getPopular().first()
+                }
+                if (_searchQuery.value.isBlank() && _selectedGenre.value == null) {
+                    _searchResults.value = list
+                }
+            } catch (e: Exception) {
+                // ignore
+            } finally {
+                _isSearchLoading.value = false
+            }
+        }
     }
 
     fun onSearchQueryChanged(query: String) {

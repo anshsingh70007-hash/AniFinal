@@ -431,7 +431,7 @@ class BackupAnimeApi(private val client: HttpClient) {
         // Try Kitsu trending first
         val kitsuList = fetchKitsu("https://kitsu.io/api/edge/trending/anime?limit=20")
         if (kitsuList.isNotEmpty()) {
-            val curated = ensureBleachFirst(kitsuList)
+            val curated = deduplicateFranchises(kitsuList)
             if (curated.size < 10) {
                 // Interleave premier modern hits (Solo Leveling, JJK, Demon Slayer, etc.) if missing
                 val existingKeys = curated.map { extractFranchiseKey(it.englishTitle ?: it.title) }.toSet()
@@ -623,7 +623,7 @@ class BackupAnimeApi(private val client: HttpClient) {
     }
 
     suspend fun getAnimeDetail(id: Int): Anime? = withContext(Dispatchers.IO) {
-        if (id == 185874 || id == 169755 || id == 116674) return@withContext bleachTybwAnime
+        if (id == 185874) return@withContext bleachTybwAnime
 
         // Check curated blockbuster hits first
         curatedBlockbusterHits.find { it.id == id }?.let { return@withContext it }
@@ -668,20 +668,18 @@ class BackupAnimeApi(private val client: HttpClient) {
     }
 
     fun ensureBleachFirst(list: List<Anime>): List<Anime> {
-        // 1. Filter out legacy Bleach and older TYBW cours so Part 4 (The Calamity) is unique & prominent
-        val filtered = list.filter { 
-            val titleLower = (it.englishTitle ?: it.title).lowercase().trim()
-            if (it.id == 185874) true
-            else !(it.id in listOf(169755, 159322, 116674, 269, 244) ||
-                   titleLower == "bleach" || titleLower.startsWith("bleach (") || titleLower == "bleach: the movie" ||
-                   titleLower.contains("conflict") || titleLower.contains("separation") || titleLower.contains("ketsubetsu") || titleLower.contains("soukoku"))
-        }
-        // 2. Deduplicate franchise entries (e.g. My Hero Academia S1/S2/S3)
-        val deduped = deduplicateFranchises(filtered)
+        val deduped = deduplicateFranchises(list)
         val mutable = deduped.toMutableList()
-        // 3. Ensure Bleach TYBW Part 4 (The Calamity) is at index 0
-        mutable.removeAll { it.id in listOf(185874, 169755, 159322, 116674) || (it.englishTitle ?: it.title).contains("Thousand-Year Blood War", ignoreCase = true) }
-        mutable.add(0, bleachTybwAnime)
+        // Ensure Bleach TYBW Part 4 (The Calamity) is at index 0 if not present
+        if (mutable.none { it.id == 185874 }) {
+            mutable.add(0, bleachTybwAnime)
+        } else {
+            val idx = mutable.indexOfFirst { it.id == 185874 }
+            if (idx > 0) {
+                val item = mutable.removeAt(idx)
+                mutable.add(0, item)
+            }
+        }
         return mutable
     }
 

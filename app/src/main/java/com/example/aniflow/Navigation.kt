@@ -27,8 +27,8 @@ fun MainNavigation() {
     val context = LocalContext.current
     val deviceType = LocalDeviceType.current
 
-    // Emergency maintenance lock: Immediately and effectively blocks all user screens
-    var isMaintenanceActive by remember { mutableStateOf(true) }
+    // Maintenance lock disabled for development/testing
+    var isMaintenanceActive by remember { mutableStateOf(false) }
 
     if (isMaintenanceActive) {
         MaintenanceScreen(deviceType = deviceType)

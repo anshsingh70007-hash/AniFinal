@@ -23,9 +23,32 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     private val settingsStore = SettingsStore(context)
 
     private val scheduleMutex = Mutex()
+    private val knownAnimeCache = java.util.concurrent.ConcurrentHashMap<Int, Anime>()
     private var cachedSchedule: List<com.example.aniflow.data.AniLightScheduleEntry>? = null
     private var lastScheduleFetchTime: Long = 0L
     private val SCHEDULE_CACHE_DURATION_MS = 5 * 60 * 1000L // 5 minutes
+
+    private fun cacheAnimeList(list: List<Anime>) {
+        for (anime in list) {
+            knownAnimeCache[anime.id] = anime
+        }
+    }
+
+    private fun isAnimeTitleMatching(t1: String, t2: String): Boolean {
+        val c1 = t1.lowercase().replace(Regex("[^a-z0-9]"), " ").trim()
+        val c2 = t2.lowercase().replace(Regex("[^a-z0-9]"), " ").trim()
+        if (c1.isEmpty() || c2.isEmpty()) return false
+        if (c1 == c2 || c1.contains(c2) || c2.contains(c1)) return true
+        val w1 = c1.split("\\s+".toRegex()).filter { it.length > 2 }.toSet()
+        val w2 = c2.split("\\s+".toRegex()).filter { it.length > 2 }.toSet()
+        if (w1.isEmpty() || w2.isEmpty()) return false
+        return w1.intersect(w2).isNotEmpty()
+    }
+
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<List<Anime>>.emitAndCache(list: List<Anime>) {
+        cacheAnimeList(list)
+        emit(list)
+    }
 
     private var cachedTrending: List<Anime>? = null
     private var lastTrendingFetchTime: Long = 0L
@@ -74,12 +97,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedTrending
         if (cached != null && cached.size > 3 && now - lastTrendingFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(backupAnimeApi.ensureBleachFirst(cached))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(cached))
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.trending.isNotEmpty() && cached == null) {
-            emit(backupAnimeApi.ensureBleachFirst(diskFeed.trending))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.trending))
         }
         try {
             var list = try { aniListApi.getTrending() } catch (e: Exception) { emptyList() }
@@ -88,17 +111,17 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 list = backupAnimeApi.getTrending()
             }
             if (list.isNotEmpty()) {
-                val sanitized = backupAnimeApi.ensureBleachFirst(list)
+                val sanitized = backupAnimeApi.deduplicateFranchises(list)
                 cachedTrending = sanitized
                 lastTrendingFetchTime = now
                 feedDiskCache.updateSection(trending = sanitized)
-                emit(sanitized)
+                emitAndCache(sanitized)
             } else {
-                emit(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.ensureBleachFirst(it) } ?: getFallbackAnimeList())
+                emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackAnimeList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting trending", e)
-            emit(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.ensureBleachFirst(it) } ?: getFallbackAnimeList())
+            emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackAnimeList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -106,12 +129,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedPopular
         if (cached != null && cached.size > 3 && now - lastPopularFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(backupAnimeApi.deduplicateFranchises(cached))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(cached))
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.popular.isNotEmpty() && cached == null) {
-            emit(backupAnimeApi.deduplicateFranchises(diskFeed.popular))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.popular))
         }
         try {
             var list = try { aniListApi.getPopular() } catch (e: Exception) { emptyList() }
@@ -124,13 +147,13 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 cachedPopular = deduped
                 lastPopularFetchTime = now
                 feedDiskCache.updateSection(popular = deduped)
-                emit(deduped)
+                emitAndCache(deduped)
             } else {
-                emit(cached ?: diskFeed?.popular?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackPopularList())
+                emitAndCache(cached ?: diskFeed?.popular?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackPopularList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting popular", e)
-            emit(cached ?: diskFeed?.popular?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackPopularList())
+            emitAndCache(cached ?: diskFeed?.popular?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackPopularList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -138,12 +161,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedSeasonal
         if (cached != null && cached.size > 3 && now - lastSeasonalFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(backupAnimeApi.deduplicateFranchises(cached))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(cached))
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.seasonal.isNotEmpty() && cached == null) {
-            emit(backupAnimeApi.deduplicateFranchises(diskFeed.seasonal))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.seasonal))
         }
         try {
             var list = try { aniListApi.getSeasonal() } catch (e: Exception) { emptyList() }
@@ -156,13 +179,13 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 cachedSeasonal = deduped
                 lastSeasonalFetchTime = now
                 feedDiskCache.updateSection(seasonal = deduped)
-                emit(deduped)
+                emitAndCache(deduped)
             } else {
-                emit(cached ?: diskFeed?.seasonal?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackSeasonalList())
+                emitAndCache(cached ?: diskFeed?.seasonal?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackSeasonalList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting seasonal", e)
-            emit(cached ?: diskFeed?.seasonal?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackSeasonalList())
+            emitAndCache(cached ?: diskFeed?.seasonal?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackSeasonalList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -179,12 +202,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedTopRated
         if (cached != null && cached.size > 3 && now - lastTopRatedFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(backupAnimeApi.deduplicateFranchises(cached))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(cached))
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.topRated.isNotEmpty() && cached == null) {
-            emit(backupAnimeApi.deduplicateFranchises(diskFeed.topRated))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.topRated))
         }
         try {
             var list = try { aniListApi.getTopRated() } catch (e: Exception) { emptyList() }
@@ -197,13 +220,13 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 cachedTopRated = deduped
                 lastTopRatedFetchTime = now
                 feedDiskCache.updateSection(topRated = deduped)
-                emit(deduped)
+                emitAndCache(deduped)
             } else {
-                emit(cached ?: diskFeed?.topRated?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackTopRatedList())
+                emitAndCache(cached ?: diskFeed?.topRated?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackTopRatedList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting top rated", e)
-            emit(cached ?: diskFeed?.topRated?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackTopRatedList())
+            emitAndCache(cached ?: diskFeed?.topRated?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackTopRatedList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -211,7 +234,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedUpcoming
         if (cached != null && cached.size > 3 && now - lastUpcomingFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(cached)
+            emitAndCache(cached)
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
@@ -220,7 +243,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 it.status.contains("UPCOMING", ignoreCase = true) || it.status.contains("NOT_YET", ignoreCase = true)
             }
             if (safeDisk.isNotEmpty()) {
-                emit(safeDisk)
+                emitAndCache(safeDisk)
             }
         }
         try {
@@ -234,35 +257,35 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 cachedUpcoming = deduped
                 lastUpcomingFetchTime = now
                 feedDiskCache.updateSection(upcoming = deduped)
-                emit(deduped)
+                emitAndCache(deduped)
             } else {
-                emit(cached ?: diskFeed?.upcoming?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackUpcomingList())
+                emitAndCache(cached ?: diskFeed?.upcoming?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackUpcomingList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting upcoming", e)
-            emit(cached ?: diskFeed?.upcoming?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackUpcomingList())
+            emitAndCache(cached ?: diskFeed?.upcoming?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackUpcomingList())
         }
     }.flowOn(Dispatchers.IO)
 
     override fun getRecentlyUpdated(): Flow<List<Anime>> = flow {
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.recentlyUpdated.isNotEmpty()) {
-            emit(diskFeed.recentlyUpdated)
+            emitAndCache(diskFeed.recentlyUpdated)
         }
         val data = refreshSchedule()
-        emit(data.second.ifEmpty { diskFeed?.recentlyUpdated?.takeIf { it.isNotEmpty() } ?: getFallbackSeasonalList() })
+        emitAndCache(data.second.ifEmpty { diskFeed?.recentlyUpdated?.takeIf { it.isNotEmpty() } ?: getFallbackSeasonalList() })
     }.flowOn(Dispatchers.IO)
 
     override fun getActionAnime(): Flow<List<Anime>> = flow {
         val now = System.currentTimeMillis()
         val cached = cachedAction
         if (cached != null && cached.size > 3 && now - lastActionFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(cached)
+            emitAndCache(cached)
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.actionAnime.isNotEmpty() && cached == null) {
-            emit(diskFeed.actionAnime)
+            emitAndCache(diskFeed.actionAnime)
         }
         try {
             var list = try { aniListApi.getAnimeByGenre("Action") } catch (e: Exception) { emptyList() }
@@ -274,13 +297,13 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 cachedAction = list
                 lastActionFetchTime = now
                 feedDiskCache.updateSection(actionAnime = list)
-                emit(list)
+                emitAndCache(list)
             } else {
-                emit(cached ?: diskFeed?.actionAnime?.takeIf { it.isNotEmpty() } ?: getFallbackActionList())
+                emitAndCache(cached ?: diskFeed?.actionAnime?.takeIf { it.isNotEmpty() } ?: getFallbackActionList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting action anime", e)
-            emit(cached ?: diskFeed?.actionAnime?.takeIf { it.isNotEmpty() } ?: getFallbackActionList())
+            emitAndCache(cached ?: diskFeed?.actionAnime?.takeIf { it.isNotEmpty() } ?: getFallbackActionList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -288,12 +311,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedRomance
         if (cached != null && cached.size > 3 && now - lastRomanceFetchTime < HOME_CACHE_DURATION_MS) {
-            emit(backupAnimeApi.deduplicateFranchises(cached))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(cached))
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.romanceAnime.isNotEmpty() && cached == null) {
-            emit(backupAnimeApi.deduplicateFranchises(diskFeed.romanceAnime))
+            emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.romanceAnime))
         }
         try {
             var list = try { aniListApi.getAnimeByGenre("Romance") } catch (e: Exception) { emptyList() }
@@ -306,13 +329,13 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 cachedRomance = deduped
                 lastRomanceFetchTime = now
                 feedDiskCache.updateSection(romanceAnime = deduped)
-                emit(deduped)
+                emitAndCache(deduped)
             } else {
-                emit(cached ?: diskFeed?.romanceAnime?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackRomanceList())
+                emitAndCache(cached ?: diskFeed?.romanceAnime?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackRomanceList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting romance anime", e)
-            emit(cached ?: diskFeed?.romanceAnime?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackRomanceList())
+            emitAndCache(cached ?: diskFeed?.romanceAnime?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackRomanceList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -326,7 +349,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             }
         }
         val fallback = if (genre.equals("Romance", ignoreCase = true)) getFallbackRomanceList() else getFallbackAnimeList()
-        emit(list.ifEmpty { fallback })
+        emitAndCache(list.ifEmpty { fallback })
     }.flowOn(Dispatchers.IO)
 
     override fun searchAnime(query: String, page: Int): Flow<SearchPage> = flow {
@@ -351,6 +374,37 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 searchPage = backupPage
             }
         }
+
+        // Direct AniLight stream catalog search fallback (guarantees finding anything streamable)
+        if (searchPage.results.isEmpty() && page == 1) {
+            try {
+                val directResults = aniLightProvider.search(optimizedQuery)
+                if (directResults.isNotEmpty()) {
+                    val directAnime = directResults.map { item ->
+                        val itemAnilistId = item.anilistId ?: kotlin.math.abs(item.slug.hashCode())
+                        providerMappingStore.setMapping(
+                            ProviderMapping(
+                                provider = ProviderId.ANILIGHT,
+                                anilistId = itemAnilistId,
+                                slug = item.slug,
+                                evidence = MappingEvidence(item.title, optimizedQuery, "DIRECT_SEARCH", 1.0)
+                            )
+                        )
+                        Anime(
+                            id = itemAnilistId,
+                            title = item.title,
+                            englishTitle = item.title,
+                            coverImage = item.posterUrl,
+                            description = "Watch ${item.title} on AniFlow",
+                            status = "RELEASING"
+                        )
+                    }
+                    searchPage = SearchPage(results = directAnime, hasNextPage = false, currentPage = 1)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DefaultAnimeRepository", "AniLight fallback search failed", e)
+            }
+        }
         
         val list = if (searchPage.results.isEmpty() && page == 1) {
             getFallbackAnimeList().filter { 
@@ -361,24 +415,41 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         } else {
             searchPage.results
         }
+        cacheAnimeList(list)
         emit(searchPage.copy(results = list))
     }.flowOn(Dispatchers.IO)
 
     override fun getAnimeDetail(id: Int): Flow<Anime?> = flow {
-        if (id == 185874 || id == 169755 || id == 116674) {
-            emit(backupAnimeApi.bleachTybwAnime)
-            return@flow
-        }
+        // First query authoritative AniList API by id
         var detail = try { aniListApi.getAnimeDetail(id) } catch (e: Exception) { null }
+        
+        // If AniList succeeded, that's the authoritative show user clicked!
+        if (detail == null) {
+            if (id == 185874) {
+                detail = backupAnimeApi.bleachTybwAnime
+            }
+            val known = knownAnimeCache[id] ?: feedDiskCache.findAnimeById(id) ?: getFallbackAnimeList().find { it.id == id }
+            if (known != null) {
+                // If known anime has a title, attempt to resolve via AniList search
+                val searchQuery = known.englishTitle?.takeIf { it.isNotBlank() } ?: known.title
+                val searched = try {
+                    aniListApi.searchAnime(searchQuery, 1).results.firstOrNull { 
+                        isAnimeTitleMatching(it.title, searchQuery) || isAnimeTitleMatching(it.englishTitle ?: "", searchQuery)
+                    }
+                } catch (e: Exception) { null }
+                if (searched != null) {
+                    detail = try { aniListApi.getAnimeDetail(searched.id) } catch (e: Exception) { null }
+                }
+                if (detail == null) {
+                    detail = known
+                }
+            }
+        }
+        
         if (detail == null) {
             detail = try { backupAnimeApi.getAnimeDetail(id) } catch (e: Exception) { null }
         }
-        if (detail == null) {
-            detail = getFallbackAnimeList().find { it.id == id }
-        }
-        if (detail == null) {
-            detail = feedDiskCache.findAnimeById(id)
-        }
+        detail?.let { knownAnimeCache[it.id] = it }
         emit(detail)
     }.flowOn(Dispatchers.IO)
 
@@ -414,15 +485,99 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 val fastPathSlug = "bleach-sennen-kessen-hen-kashin-tan-kyzw"
                 val epResult = provider.getEpisodes(ProviderSeriesId(fastPathSlug))
                 if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    providerMappingStore.setMapping(
+                        ProviderMapping(
+                            provider = providerId,
+                            anilistId = identity.anilistId,
+                            slug = fastPathSlug,
+                            evidence = MappingEvidence(fastPathSlug, identity.title, "FAST_PATH", 1.0)
+                        )
+                    )
                     return epResult
                 }
             }
 
             // Fast-path instant mapping for Bleach TYBW Part 3 (The Conflict)
-            if (identity.anilistId == 169755) {
+            if (identity.anilistId == 169755 || identity.title.contains("Conflict", ignoreCase = true) || identity.title.contains("Soukoku", ignoreCase = true)) {
                 val fastPathSlug = "bleach-sennen-kessen-hen-soukoku-tan-o672"
                 val epResult = provider.getEpisodes(ProviderSeriesId(fastPathSlug))
                 if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    providerMappingStore.setMapping(
+                        ProviderMapping(
+                            provider = providerId,
+                            anilistId = identity.anilistId,
+                            slug = fastPathSlug,
+                            evidence = MappingEvidence(fastPathSlug, identity.title, "FAST_PATH", 1.0)
+                        )
+                    )
+                    return epResult
+                }
+            }
+
+            // Fast-path instant mapping for Bleach TYBW Part 2 (The Separation)
+            if (identity.anilistId == 159322 || identity.title.contains("Separation", ignoreCase = true) || identity.title.contains("Ketsubetsu", ignoreCase = true)) {
+                val fastPathSlug = "bleach-sennen-kessen-hen-ketsubetsu-tan-p8pl"
+                val epResult = provider.getEpisodes(ProviderSeriesId(fastPathSlug))
+                if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    providerMappingStore.setMapping(
+                        ProviderMapping(
+                            provider = providerId,
+                            anilistId = identity.anilistId,
+                            slug = fastPathSlug,
+                            evidence = MappingEvidence(fastPathSlug, identity.title, "FAST_PATH", 1.0)
+                        )
+                    )
+                    return epResult
+                }
+            }
+
+            // Fast-path instant mapping for Bleach TYBW Part 1
+            if (identity.anilistId == 116674 || (identity.title.contains("Thousand-Year Blood War", ignoreCase = true) && !identity.title.contains("Part", ignoreCase = true) && !identity.title.contains("Separation", ignoreCase = true) && !identity.title.contains("Conflict", ignoreCase = true) && !identity.title.contains("Calamity", ignoreCase = true))) {
+                val fastPathSlug = "bleach-sennen-kessen-hen"
+                val epResult = provider.getEpisodes(ProviderSeriesId(fastPathSlug))
+                if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    providerMappingStore.setMapping(
+                        ProviderMapping(
+                            provider = providerId,
+                            anilistId = identity.anilistId,
+                            slug = fastPathSlug,
+                            evidence = MappingEvidence(fastPathSlug, identity.title, "FAST_PATH", 1.0)
+                        )
+                    )
+                    return epResult
+                }
+            }
+
+            // Fast-path instant mapping for Original Bleach
+            if (identity.anilistId == 269) {
+                val fastPathSlug = "bleach-sfvn"
+                val epResult = provider.getEpisodes(ProviderSeriesId(fastPathSlug))
+                if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    providerMappingStore.setMapping(
+                        ProviderMapping(
+                            provider = providerId,
+                            anilistId = identity.anilistId,
+                            slug = fastPathSlug,
+                            evidence = MappingEvidence(fastPathSlug, identity.title, "FAST_PATH", 1.0)
+                        )
+                    )
+                    return epResult
+                }
+            }
+
+            // Fast-path instant mapping for Bleach Movie 1
+            if (identity.anilistId == 1686) {
+                val fastPathSlug = "bleach-memories-of-nobody-7zas"
+                val epResult = provider.getEpisodes(ProviderSeriesId(fastPathSlug))
+                if (epResult is EpisodeLookupResult.Matched && epResult.episodes.isNotEmpty()) {
+                    providerMappingStore.setMapping(
+                        ProviderMapping(
+                            provider = providerId,
+                            anilistId = identity.anilistId,
+                            slug = fastPathSlug,
+                            evidence = MappingEvidence(fastPathSlug, identity.title, "FAST_PATH", 1.0)
+                        )
+                    )
                     return epResult
                 }
             }
@@ -462,7 +617,24 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                         provider.getEpisodes(lookupResult.seriesId)
                     }
                     is SeriesMatchResult.Ambiguous -> {
-                        EpisodeLookupResult.Ambiguous(lookupResult.candidates)
+                        val candidatesToTry = lookupResult.candidates.take(3)
+                        var resolved: EpisodeLookupResult? = null
+                        for (cand in candidatesToTry) {
+                            val candidateResult = provider.getEpisodes(ProviderSeriesId(cand.slug))
+                            if (candidateResult is EpisodeLookupResult.Matched && candidateResult.episodes.isNotEmpty()) {
+                                providerMappingStore.setMapping(
+                                    ProviderMapping(
+                                        provider = providerId,
+                                        anilistId = identity.anilistId,
+                                        slug = cand.slug,
+                                        evidence = MappingEvidence(cand.title, identity.title, "AMBIGUOUS_FALLBACK", 0.75)
+                                    )
+                                )
+                                resolved = candidateResult
+                                break
+                            }
+                        }
+                        resolved ?: EpisodeLookupResult.Ambiguous(lookupResult.candidates)
                     }
                     is SeriesMatchResult.NotFound -> {
                         EpisodeLookupResult.NotFound
@@ -497,8 +669,23 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val providerImpl = providers[request.provider]
             ?: return PlaybackResult.Error(request.provider, PlaybackErrorType.NoProviderMatch, "Provider not found")
         
-        val resolvedSlug = providerMappingStore.getMapping(request.provider, request.animeId)?.slug
-            ?: request.seriesSlug
+        var resolvedSlug = providerMappingStore.getMapping(request.provider, request.animeId)?.slug
+        if (resolvedSlug == null || resolvedSlug.contains(" ")) {
+            if (request.episodeId.startsWith("anilight:")) {
+                val candidate = request.episodeId.removePrefix("anilight:").substringBefore("|")
+                if (candidate.isNotEmpty() && !candidate.contains(" ")) {
+                    resolvedSlug = candidate
+                }
+            } else if (request.episodeId.contains(":")) {
+                val candidate = request.episodeId.substringAfter(":").substringBefore("|")
+                if (candidate.isNotEmpty() && !candidate.contains(" ")) {
+                    resolvedSlug = candidate
+                }
+            }
+        }
+        if (resolvedSlug == null) {
+            resolvedSlug = request.seriesSlug
+        }
  
         val correctedRequest = request.copy(seriesSlug = resolvedSlug)
         val result = providerImpl.resolve(correctedRequest)
@@ -684,6 +871,22 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         }
 
         if (airingTodayList.isNotEmpty() || recentlyUpdatedList.isNotEmpty()) {
+            cacheAnimeList(recentlyUpdatedList)
+            for (item in airingTodayList) {
+                knownAnimeCache.putIfAbsent(
+                    item.mediaId,
+                    Anime(
+                        id = item.mediaId,
+                        title = item.title,
+                        englishTitle = item.title,
+                        coverImage = item.coverImageUrl,
+                        bannerImage = item.coverImageUrl,
+                        episodes = item.episode,
+                        status = "RELEASING",
+                        nextAiringAt = item.airingAt
+                    )
+                )
+            }
             feedDiskCache.updateSection(
                 airingToday = if (airingTodayList.isNotEmpty()) airingTodayList else null,
                 recentlyUpdated = if (recentlyUpdatedList.isNotEmpty()) recentlyUpdatedList else null
