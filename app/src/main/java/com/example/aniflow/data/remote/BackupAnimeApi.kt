@@ -469,8 +469,39 @@ class BackupAnimeApi(private val client: HttpClient) {
         return result
     }
 
+    suspend fun getAniLightHomepageTrending(): List<Anime> = withContext(Dispatchers.IO) {
+        try {
+            val response = client.get("https://api.anilight.live/api/homepage") {
+                header("User-Agent", userAgent)
+                header("Referer", "https://anilight.live/")
+                header("Origin", "https://anilight.live")
+                header("Accept", "application/json, text/plain, */*")
+            }
+            if (response.status == HttpStatusCode.OK) {
+                val root = json.parseToJsonElement(response.bodyAsText()) as? JsonObject ?: return@withContext emptyList()
+                val trendingObj = (root["trending"] as? JsonElement)?.takeIf { it !is JsonNull } as? JsonObject ?: return@withContext emptyList()
+                val mediaArray = (trendingObj["media"] as? JsonElement)?.takeIf { it !is JsonNull } as? JsonArray ?: return@withContext emptyList()
+                val items = mediaArray.mapNotNull { el ->
+                    val obj = (el as? JsonElement)?.takeIf { it !is JsonNull } as? JsonObject ?: return@mapNotNull null
+                    mapAniLightJsonToAnime(obj)
+                }.filter { it.title.isNotBlank() && it.coverImage.isNotBlank() }
+                if (items.isNotEmpty()) {
+                    return@withContext items
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("BackupAnimeApi", "Failed to fetch trending from AniLight homepage", e)
+        }
+        emptyList()
+    }
+
     suspend fun getTrending(): List<Anime> = withContext(Dispatchers.IO) {
-        // Try Kitsu modern trending query first (TV series with high popularity from recent seasons)
+        val aniLightTrending = getAniLightHomepageTrending()
+        if (aniLightTrending.isNotEmpty()) {
+            return@withContext aniLightTrending
+        }
+
+        // Try Kitsu modern trending query fallback
         val kitsuList = try {
             fetchKitsu("https://kitsu.io/api/edge/anime?sort=-userCount&filter[subtype]=TV&filter[seasonYear]=2024&page[limit]=20")
         } catch (e: Exception) {
@@ -478,18 +509,10 @@ class BackupAnimeApi(private val client: HttpClient) {
         }
         if (kitsuList.isNotEmpty()) {
             val curated = deduplicateFranchises(kitsuList)
-            // Interleave premier modern hits (Bleach, Solo Leveling, JJK, Demon Slayer, etc.) if missing
-            val existingKeys = curated.map { extractFranchiseKey(it.englishTitle ?: it.title) }.toSet()
-            val missingBlockbusters = curatedTrendingAnime.filter { 
-                val key = extractFranchiseKey(it.englishTitle ?: it.title)
-                !existingKeys.contains(key)
-            }
-            val merged = (curated + missingBlockbusters).distinctBy { it.id }
-            return@withContext ensureBleachFirst(merged).take(20)
+            return@withContext curated.take(20)
         }
 
-        // Fallback to curated modern trending directly with Bleach TYBW at #1
-        ensureBleachFirst(curatedTrendingAnime)
+        curatedTrendingAnime
     }
 
     suspend fun getPopular(): List<Anime> = withContext(Dispatchers.IO) {
@@ -869,9 +892,12 @@ class BackupAnimeApi(private val client: HttpClient) {
         val englishTitle = titleObj?.get("english")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
         val coverObj = (obj["coverImage"] as? JsonElement)?.takeIf { it !is JsonNull } as? JsonObject
-        val coverImage = coverObj?.get("extraLarge")?.jsonPrimitive?.contentOrNull
+        var coverImage = coverObj?.get("extraLarge")?.jsonPrimitive?.contentOrNull
             ?: coverObj?.get("large")?.jsonPrimitive?.contentOrNull
             ?: ""
+        if (rawId == 185874 && (coverImage.isBlank() || coverImage.contains("WkL6oB6Gj2x6"))) {
+            coverImage = "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx185874-aU3e6tBT6wwA.jpg"
+        }
 
         val tmdbObj = (obj["tmdb"] as? JsonElement)?.takeIf { it !is JsonNull } as? JsonObject
         val bannerImage = obj["bannerImage"]?.jsonPrimitive?.contentOrNull
@@ -892,6 +918,11 @@ class BackupAnimeApi(private val client: HttpClient) {
         val desc = obj["description"]?.jsonPrimitive?.contentOrNull
         val formatStr = obj["format"]?.jsonPrimitive?.contentOrNull?.uppercase()
             ?: obj["type"]?.jsonPrimitive?.contentOrNull?.uppercase()
+        val season = obj["season"]?.jsonPrimitive?.contentOrNull
+        val seasonYear = obj["seasonYear"]?.jsonPrimitive?.intOrNull
+        val nextAiringObj = (obj["nextAiringEpisode"] as? JsonElement)?.takeIf { it !is JsonNull } as? JsonObject
+        val nextEp = nextAiringObj?.get("episode")?.jsonPrimitive?.intOrNull
+        val nextAt = nextAiringObj?.get("airingAt")?.jsonPrimitive?.longOrNull
 
         return Anime(
             id = rawId,
@@ -905,6 +936,10 @@ class BackupAnimeApi(private val client: HttpClient) {
             averageScore = score,
             genres = genres,
             status = status,
+            season = season,
+            seasonYear = seasonYear,
+            nextAiringEpisode = nextEp,
+            nextAiringAt = nextAt,
             trailerUrl = trailerUrl
         )
     }

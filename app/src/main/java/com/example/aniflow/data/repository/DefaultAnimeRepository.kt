@@ -97,31 +97,34 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedTrending
         if (cached != null && cached.size > 3 && now - lastTrendingFetchTime < HOME_CACHE_DURATION_MS) {
-            emitAndCache(backupAnimeApi.ensureBleachFirst(cached))
+            emitAndCache(cached)
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.trending.isNotEmpty() && cached == null) {
-            emitAndCache(backupAnimeApi.ensureBleachFirst(diskFeed.trending))
+            emitAndCache(diskFeed.trending)
         }
         try {
-            var list = try { aniListApi.getTrending() } catch (e: Exception) { emptyList() }
+            // First try AniLight official /homepage trending to match anilight.live exactly
+            var list = try { backupAnimeApi.getAniLightHomepageTrending() } catch (e: Exception) { emptyList() }
             if (list.isEmpty()) {
-                android.util.Log.i("DefaultAnimeRepository", "AniList trending unavailable, trying backup API...")
+                list = try { aniListApi.getTrending() } catch (e: Exception) { emptyList() }
+            }
+            if (list.isEmpty()) {
+                android.util.Log.i("DefaultAnimeRepository", "AniLight & AniList trending unavailable, trying backup API...")
                 list = backupAnimeApi.getTrending()
             }
             if (list.isNotEmpty()) {
-                val sanitized = backupAnimeApi.ensureBleachFirst(list)
-                cachedTrending = sanitized
+                cachedTrending = list
                 lastTrendingFetchTime = now
-                feedDiskCache.updateSection(trending = sanitized)
-                emitAndCache(sanitized)
+                feedDiskCache.updateSection(trending = list)
+                emitAndCache(list)
             } else {
-                emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.ensureBleachFirst(it) } ?: getFallbackAnimeList())
+                emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() } ?: getFallbackAnimeList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting trending", e)
-            emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.ensureBleachFirst(it) } ?: getFallbackAnimeList())
+            emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() } ?: getFallbackAnimeList())
         }
     }.flowOn(Dispatchers.IO)
 
