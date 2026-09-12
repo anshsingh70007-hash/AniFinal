@@ -26,7 +26,7 @@ data class HomeFeedCache(
 class FeedDiskCache(private val context: Context) {
     private val json = NetworkModule.json
     private val cacheFile: File
-        get() = File(context.filesDir, "feed_cache_v2.json")
+        get() = File(context.filesDir, "feed_cache_v3.json")
 
     private var inMemoryCache: HomeFeedCache? = null
 
@@ -49,7 +49,7 @@ class FeedDiskCache(private val context: Context) {
         try {
             inMemoryCache = cache
             val serialized = json.encodeToString(HomeFeedCache.serializer(), cache)
-            val tempFile = File(context.filesDir, "feed_cache_v2.json.tmp")
+            val tempFile = File(context.filesDir, "feed_cache_v3.json.tmp")
             tempFile.writeText(serialized)
             if (tempFile.renameTo(cacheFile)) {
                 android.util.Log.d("FeedDiskCache", "Saved feed cache to disk (${cache.trending.size} trending, ${cache.popular.size} popular)")

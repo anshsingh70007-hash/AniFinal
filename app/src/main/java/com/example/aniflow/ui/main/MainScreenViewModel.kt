@@ -323,8 +323,11 @@ class MainScreenViewModel(
                 val batch1 = listOf(
                     launch {
                         try {
-                            val rawTrending = repository.getTrending().first()
-                            _trending.value = rawTrending
+                            repository.getTrending().collect { freshTrending ->
+                                if (freshTrending.isNotEmpty()) {
+                                    _trending.value = freshTrending
+                                }
+                            }
                         } catch (e: Exception) {
                             android.util.Log.e("MainScreenViewModel", "Error loading trending in loadData", e)
                         }
@@ -366,9 +369,10 @@ class MainScreenViewModel(
                     val retryBatch1 = listOf(
                         launch {
                             try {
-                                val rawTrending = repository.getTrending().first()
-                                if (rawTrending.isNotEmpty() && rawTrending.size > _trending.value.size) {
-                                    _trending.value = rawTrending
+                                repository.getTrending().collect { freshTrending ->
+                                    if (freshTrending.isNotEmpty() && freshTrending.size >= _trending.value.size) {
+                                        _trending.value = freshTrending
+                                    }
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()

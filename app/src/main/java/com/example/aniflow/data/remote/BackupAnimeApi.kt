@@ -22,7 +22,7 @@ class BackupAnimeApi(private val client: HttpClient) {
         id = 185874,
         title = "Bleach: Thousand-Year Blood War - The Calamity",
         englishTitle = "Bleach: Thousand-Year Blood War - The Calamity",
-        coverImage = "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx185874-WkL6oB6Gj2x6.jpg",
+        coverImage = "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx185874-aU3e6tBT6wwA.jpg",
         bannerImage = "https://media.kitsu.app/anime/48015/cover_image/large-b3305a3976b88108f7f32e4d53748c2d.jpeg",
         description = "The fourth and final cour of Bleach: Thousand-Year Blood War adapts the climactic final battle of the Quincy Blood War (Kashin-tan / The Calamity). Ichigo Kurosaki, the Soul Society, and the Gotei 13 make their ultimate stand against Yhwach and the Almighty to determine the fate of all three worlds.",
         episodes = 10,
@@ -205,6 +205,48 @@ class BackupAnimeApi(private val client: HttpClient) {
             status = "FINISHED"
         )
     )
+
+    val curatedTrendingAnime: List<Anime> by lazy {
+        listOf(
+            bleachTybwAnime,
+            curatedBlockbusterHits.first { it.id == 151807 }, // Solo Leveling
+            curatedBlockbusterHits.first { it.id == 113415 }, // Jujutsu Kaisen
+            curatedBlockbusterHits.first { it.id == 101922 }, // Demon Slayer
+            curatedBlockbusterHits.first { it.id == 154587 }, // Frieren
+            curatedBlockbusterHits.first { it.id == 127230 }, // Chainsaw Man
+            Anime(
+                id = 128893,
+                title = "Hell's Paradise",
+                englishTitle = "Hell's Paradise",
+                coverImage = "https://media.kitsu.app/anime/poster_images/43907/large.jpg",
+                bannerImage = "https://image.tmdb.org/t/p/original/gmECX1DvFnahQIhzptJ6gl2VTe7.jpg",
+                description = "Gabimaru the Hollow, a ninja of Iwagakure Village renowned for being cold and ruthless, was set up by his fellow ninja and is now on death row.",
+                episodes = 13,
+                averageScore = 83,
+                genres = listOf("Action", "Adventure", "Supernatural"),
+                studioName = "MAPPA",
+                status = "FINISHED"
+            ),
+            Anime(
+                id = 108465,
+                title = "Mushoku Tensei: Jobless Reincarnation",
+                englishTitle = "Mushoku Tensei: Jobless Reincarnation",
+                coverImage = "https://media.kitsu.app/anime/poster_images/42436/large.jpg",
+                bannerImage = "https://image.tmdb.org/t/p/original/179rCi2qG1d9Z5eOzR0S2FpdP6X.jpg",
+                description = "A 34-year-old shut-in is reincarnated into a fantastical world of magic and swordsmanship as an infant named Rudeus Greyrat.",
+                episodes = 23,
+                averageScore = 85,
+                genres = listOf("Adventure", "Drama", "Fantasy"),
+                studioName = "Studio Bind",
+                status = "FINISHED"
+            ),
+            curatedBlockbusterHits.first { it.id == 16498 },  // Attack on Titan
+            curatedBlockbusterHits.first { it.id == 21 },     // One Piece
+            curatedBlockbusterHits.first { it.id == 140960 }, // Spy x Family
+            curatedBlockbusterHits.first { it.id == 101348 }, // Vinland Saga
+            curatedBlockbusterHits.first { it.id == 21519 }   // Mob Psycho 100
+        )
+    }
 
     val curatedUpcomingAnime: List<Anime> by lazy {
         listOf(
@@ -428,24 +470,26 @@ class BackupAnimeApi(private val client: HttpClient) {
     }
 
     suspend fun getTrending(): List<Anime> = withContext(Dispatchers.IO) {
-        // Try Kitsu trending first
-        val kitsuList = fetchKitsu("https://kitsu.io/api/edge/trending/anime?limit=20")
+        // Try Kitsu modern trending query first (TV series with high popularity from recent seasons)
+        val kitsuList = try {
+            fetchKitsu("https://kitsu.io/api/edge/anime?sort=-userCount&filter[subtype]=TV&filter[seasonYear]=2024&page[limit]=20")
+        } catch (e: Exception) {
+            emptyList()
+        }
         if (kitsuList.isNotEmpty()) {
             val curated = deduplicateFranchises(kitsuList)
-            if (curated.size < 10) {
-                // Interleave premier modern hits (Solo Leveling, JJK, Demon Slayer, etc.) if missing
-                val existingKeys = curated.map { extractFranchiseKey(it.englishTitle ?: it.title) }.toSet()
-                val missingBlockbusters = curatedBlockbusterHits.filter { 
-                    val key = extractFranchiseKey(it.englishTitle ?: it.title)
-                    !existingKeys.contains(key)
-                }
-                return@withContext (curated + missingBlockbusters).distinctBy { it.id }.take(20)
+            // Interleave premier modern hits (Bleach, Solo Leveling, JJK, Demon Slayer, etc.) if missing
+            val existingKeys = curated.map { extractFranchiseKey(it.englishTitle ?: it.title) }.toSet()
+            val missingBlockbusters = curatedTrendingAnime.filter { 
+                val key = extractFranchiseKey(it.englishTitle ?: it.title)
+                !existingKeys.contains(key)
             }
-            return@withContext curated.take(20)
+            val merged = (curated + missingBlockbusters).distinctBy { it.id }
+            return@withContext ensureBleachFirst(merged).take(20)
         }
 
-        // Fallback to curated blockbusters directly
-        curatedBlockbusterHits
+        // Fallback to curated modern trending directly with Bleach TYBW at #1
+        ensureBleachFirst(curatedTrendingAnime)
     }
 
     suspend fun getPopular(): List<Anime> = withContext(Dispatchers.IO) {

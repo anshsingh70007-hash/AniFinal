@@ -97,12 +97,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
         val now = System.currentTimeMillis()
         val cached = cachedTrending
         if (cached != null && cached.size > 3 && now - lastTrendingFetchTime < HOME_CACHE_DURATION_MS) {
-            emitAndCache(backupAnimeApi.deduplicateFranchises(cached))
+            emitAndCache(backupAnimeApi.ensureBleachFirst(cached))
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
         if (diskFeed != null && diskFeed.trending.isNotEmpty() && cached == null) {
-            emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.trending))
+            emitAndCache(backupAnimeApi.ensureBleachFirst(diskFeed.trending))
         }
         try {
             var list = try { aniListApi.getTrending() } catch (e: Exception) { emptyList() }
@@ -111,17 +111,17 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 list = backupAnimeApi.getTrending()
             }
             if (list.isNotEmpty()) {
-                val sanitized = backupAnimeApi.deduplicateFranchises(list)
+                val sanitized = backupAnimeApi.ensureBleachFirst(list)
                 cachedTrending = sanitized
                 lastTrendingFetchTime = now
                 feedDiskCache.updateSection(trending = sanitized)
                 emitAndCache(sanitized)
             } else {
-                emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackAnimeList())
+                emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.ensureBleachFirst(it) } ?: getFallbackAnimeList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting trending", e)
-            emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.deduplicateFranchises(it) } ?: getFallbackAnimeList())
+            emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() }?.let { backupAnimeApi.ensureBleachFirst(it) } ?: getFallbackAnimeList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -703,7 +703,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     }
 
     private fun getFallbackAnimeList(): List<Anime> {
-        return backupAnimeApi.curatedBlockbusterHits
+        return backupAnimeApi.curatedTrendingAnime
     }
 
     private fun getFallbackPopularList(): List<Anime> {
@@ -738,7 +738,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             AiringAnime(
                 mediaId = 185874,
                 title = "Bleach: Thousand-Year Blood War - The Calamity",
-                coverImageUrl = "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx185874-WkL6oB6Gj2x6.jpg",
+                coverImageUrl = "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx185874-aU3e6tBT6wwA.jpg",
                 airingAt = now + 3600,
                 episode = 1
             ),
