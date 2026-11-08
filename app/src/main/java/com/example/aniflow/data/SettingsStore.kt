@@ -22,11 +22,6 @@ class SettingsStore(
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val defaultSpeedKey = floatPreferencesKey("default_playback_speed")
     private val autoPlayNextKey = booleanPreferencesKey("auto_play_next_episode")
-    private val feedbackOnboardingShownKey = booleanPreferencesKey("feedback_onboarding_shown_v184")
-
-    val feedbackOnboardingShown: Flow<Boolean> = activeDataStore.data.map { prefs ->
-        prefs[feedbackOnboardingShownKey] ?: false
-    }
 
     val qualityPreference: Flow<String> = activeDataStore.data.map { prefs ->
         prefs[qualityKey] ?: "auto"
@@ -132,11 +127,6 @@ class SettingsStore(
         }
     }
 
-    suspend fun setFeedbackOnboardingShown(shown: Boolean) {
-        activeDataStore.edit { prefs ->
-            prefs[feedbackOnboardingShownKey] = shown
-        }
-    }
 
     private val navSoundsKey = booleanPreferencesKey("nav_sounds")
 

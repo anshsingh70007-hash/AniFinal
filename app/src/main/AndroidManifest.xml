@@ -49,6 +49,11 @@
             </intent-filter>
         </activity>
 
+        <!-- The system's answer to an in-app update (AppUpdater, PackageInstaller session). -->
+        <receiver
+            android:name=".utils.InstallResultReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

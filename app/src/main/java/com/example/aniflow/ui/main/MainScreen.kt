@@ -18,6 +18,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -146,8 +147,6 @@ fun MainScreen(
     val hStore = remember { watchHistoryStore ?: WatchHistoryStore(context) }
     val sStore = remember { settingsStore ?: SettingsStore(context) }
     val heroTrailers by sStore.heroTrailers.collectAsStateWithLifecycle(initialValue = true)
-    val feedbackOnboardingShown by sStore.feedbackOnboardingShown.collectAsStateWithLifecycle(initialValue = true)
-    val showOnboarding = !feedbackOnboardingShown && updateInfo == null
     val isRedesign = remember {
         context.packageName.endsWith(".redesign")
     }
@@ -180,7 +179,7 @@ fun MainScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (updateInfo == null || !updateInfo!!.forceUpdate) {
-            val contentModifier = if (updateInfo != null || showOnboarding) {
+            val contentModifier = if (updateInfo != null) {
                 // B16: canFocus=false on a plain Box never blocked its children, so the D-pad walked
                 // behind the modal (and could press Play under it). Cancel entry into the group.
                 Modifier
@@ -233,7 +232,7 @@ fun MainScreen(
                                 shelves = shelves,
                                 trailersEnabled = heroTrailers,
                                 isLoading = isLoading,
-                                blocked = updateInfo != null || showOnboarding,
+                                blocked = updateInfo != null,
                                 // Off while the rail has focus, so BACK there reaches MainScreen's Home/exit logic.
                                 backEnabled = isTopDestination && updateInfo == null && !navBarFocused,
                                 onOpenDetail = { onItemClick(Detail(it)) },
@@ -652,17 +651,6 @@ fun MainScreen(
                 }
             }
         }
-
-        if (showOnboarding) {
-            val scope = rememberCoroutineScope()
-            FeedbackOnboardingScreen(
-                onDismiss = {
-                    scope.launch {
-                        sStore.setFeedbackOnboardingShown(true)
-                    }
-                }
-            )
-        }
     }
 }
 
@@ -688,12 +676,16 @@ fun UpdateTakeoverScreen(
         visible = true
     }
 
+    // TV: the button sits inside AnimatedVisibility, so it isn't attached on the first frame and a
+    // single requestFocus() silently missed. Focus then stayed on the home screen behind, and OK
+    // opened a show instead of installing. Retry until the dialog really holds focus.
+    var dialogHasFocus by remember { mutableStateOf(false) }
     LaunchedEffect(visible) {
         if (visible && deviceType == com.example.aniflow.DeviceType.TV) {
-            try {
-                focusRequester.requestFocus()
-            } catch (e: Exception) {
-                // ignore
+            repeat(40) {
+                if (dialogHasFocus) return@LaunchedEffect
+                runCatching { focusRequester.requestFocus() }
+                delay(50)
             }
         }
     }
@@ -766,6 +758,12 @@ fun UpdateTakeoverScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        // Keep remote focus inside the dialog, and scroll so the buttons are
+                        // reachable on a 720p TV (they were cut off below the screen).
+                        .onFocusChanged { dialogHasFocus = it.hasFocus }
+                        .focusProperties { onExit = { cancelFocusChange() } }
+                        .focusGroup()
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState())
                         .padding(28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -819,7 +817,8 @@ fun UpdateTakeoverScreen(
                         text = if (isMaintenance)
                             "This app is under maintenance we will be back soon.\n\nWe're fine-tuning our video player engine and streaming infrastructure to ensure seamless, stutter-free playback for you. Grab a coffee or your favorite snack — we'll be back shortly! ☕❤️"
                         else
-                            "A new version of AniFlow (v${info.versionName}) is available. Please update to continue using the application.",
+                            if (info.forceUpdate) "AniFlow ${info.versionName} is required to keep using the app."
+                            else "AniFlow ${info.versionName} is ready to install.",
                         color = TextSecondary,
                         fontSize = 14.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -972,14 +971,14 @@ fun UpdateTakeoverScreen(
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Text(
-                                            text = "⚠️ One-Time Reinstall Required",
+                                            text = "The update didn't install",
                                             color = Color(0xFFFF8FA3),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "Due to our new permanent security key, older apps cannot update in-place. Please uninstall your older app and install from GitHub.",
+                                            text = "Nothing was changed. Check your connection and try again.",
                                             color = TextSecondary,
                                             fontSize = 11.sp,
                                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -988,35 +987,16 @@ fun UpdateTakeoverScreen(
                                     }
                                 }
 
-                                // GitHub Install Button (Primary, clickable, D-pad focusable on TV)
+                                // Primary: the in-app install (signed, verified download, then the
+                                // system installer). This used to be a small secondary link, while
+                                // the big button opened GitHub in a browser, which TVs don't have:
+                                // "You don't have an app that can do this".
                                 UpdateButton(
-                                    text = "Install from GitHub",
+                                    text = if (downloadProgress == -1.0f) "Try again" else "Update now",
                                     isPrimary = true,
                                     isRedesign = isRedesign,
                                     deviceType = deviceType,
                                     modifier = Modifier.focusRequester(focusRequester),
-                                    onClick = {
-                                        try {
-                                            uriHandler.openUri(githubReleaseUrl)
-                                        } catch (e: Exception) {
-                                            try {
-                                                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(githubReleaseUrl)).apply {
-                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                }
-                                                context.startActivity(browserIntent)
-                                            } catch (err: Exception) {
-                                                Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                )
-
-                                // Direct In-App APK Download
-                                UpdateButton(
-                                    text = if (downloadProgress == -1.0f) "Retry In-App Download" else "Direct APK Download",
-                                    isPrimary = false,
-                                    isRedesign = isRedesign,
-                                    deviceType = deviceType,
                                     onClick = {
                                         downloadProgress = 0.0f
                                         onDownload { progress ->
@@ -1024,6 +1004,23 @@ fun UpdateTakeoverScreen(
                                         }
                                     }
                                 )
+
+                                // Phones only: the download page, for anyone who'd rather install by hand.
+                                if (deviceType != com.example.aniflow.DeviceType.TV) {
+                                    UpdateButton(
+                                        text = "Open download page",
+                                        isPrimary = false,
+                                        isRedesign = isRedesign,
+                                        deviceType = deviceType,
+                                        onClick = {
+                                            try {
+                                                uriHandler.openUri(githubReleaseUrl)
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "No browser found to open the download page.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    )
+                                }
 
                                 if (!info.forceUpdate) {
                                     Row(
@@ -1145,150 +1142,4 @@ private fun UpdateButton(
     }
 }
 
-@Composable
-fun FeedbackOnboardingScreen(
-    onDismiss: () -> Unit
-) {
-    var visible by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val isRedesign = remember { context.packageName.endsWith(".redesign") }
-    val deviceType = com.example.aniflow.LocalDeviceType.current
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        visible = true
-    }
-
-    LaunchedEffect(visible) {
-        if (visible && deviceType == com.example.aniflow.DeviceType.TV) {
-            try {
-                focusRequester.requestFocus()
-            } catch (e: Exception) {
-                // ignore
-            }
-        }
-    }
-
-    val executeWithAnimation: (() -> Unit) -> Unit = { callback ->
-        scope.launch {
-            visible = false
-            delay(250L)
-            callback()
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                if (isRedesign) {
-                    Color.Black.copy(alpha = 0.85f)
-                } else {
-                    PrimaryDark.copy(alpha = 0.9f)
-                }
-            )
-            .let {
-                if (deviceType != com.example.aniflow.DeviceType.TV) {
-                    it.clickable {
-                        executeWithAnimation { onDismiss() }
-                    }
-                } else {
-                    it
-                }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.animation.AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(tween(300)) + scaleIn(tween(300, easing = androidx.compose.animation.core.EaseInOutCubic), initialScale = 0.8f),
-            exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.8f)
-        ) {
-            val cardModifier = if (isRedesign) {
-                Modifier
-                    .widthIn(max = 440.dp)
-                    .padding(24.dp)
-                    .glassSurface(shape = RoundedCornerShape(20.dp))
-                    .let {
-                        if (deviceType != com.example.aniflow.DeviceType.TV) {
-                            it.clickable(enabled = false) {}
-                        } else {
-                            it
-                        }
-                    }
-            } else {
-                Modifier
-                    .widthIn(max = 440.dp)
-                    .padding(24.dp)
-                    .let {
-                        if (deviceType != com.example.aniflow.DeviceType.TV) {
-                            it.clickable(enabled = false) {}
-                        } else {
-                            it
-                        }
-                    }
-            }
-
-            Surface(
-                modifier = cardModifier,
-                shape = RoundedCornerShape(20.dp),
-                color = if (isRedesign) Color(0xFF110C1C).copy(alpha = 0.98f) else SurfaceCard,
-                tonalElevation = 16.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(28.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .background(PrimaryAccent.copy(alpha = 0.15f), shape = androidx.compose.foundation.shape.CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            modifier = Modifier.size(36.dp),
-                            tint = PrimaryAccent
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Introducing Your Picks",
-                        color = TextPrimary,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = "Open any title, write a line about why you love it, and it gets a spot in the \"Your Picks\" row on your home screen. Your notes stay on this device.",
-                        color = TextSecondary,
-                        fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        lineHeight = 20.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    UpdateButton(
-                        text = "Got it!",
-                        isPrimary = true,
-                        isRedesign = isRedesign,
-                        deviceType = deviceType,
-                        modifier = Modifier.focusRequester(focusRequester),
-                        onClick = {
-                            executeWithAnimation { onDismiss() }
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
 

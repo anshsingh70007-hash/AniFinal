@@ -1,8 +1,10 @@
 package com.example.aniflow.utils
 
 import android.content.Context
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.os.Build
@@ -110,10 +112,8 @@ object AppUpdater {
                 if (!got) throw IllegalStateException("Couldn't download the update from any server (${lastError?.message}).")
                 verifyApkOrThrow(appContext, destinationFile, expected.versionCode)
 
-                withContext(Dispatchers.Main) {
-                    onProgress?.invoke(1.0f)
-                    installApk(appContext, destinationFile)
-                }
+                withContext(Dispatchers.Main) { onProgress?.invoke(1.0f) }
+                installApk(appContext, destinationFile)
             } catch (e: Exception) {
                 destinationFile.delete()
                 val message = when (e) {
@@ -262,20 +262,53 @@ object AppUpdater {
             .toSet()
     }
 
-    private fun installApk(context: Context, file: File) {
+    /**
+     * Hands the verified APK to Android through [PackageInstaller], the system install API.
+     *
+     * It used to fire `ACTION_VIEW` with the APK's MIME type, which depends on some app claiming
+     * that intent. Many Android TVs ship none, so the update died with "You don't have an app that
+     * can do this". A session needs no such app: the system itself shows the confirm screen
+     * (InstallResultReceiver starts it). `ACTION_VIEW` stays as a last resort only.
+     */
+    private suspend fun installApk(context: Context, file: File) = withContext(Dispatchers.IO) {
         try {
-            val apkUri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
+            val installer = context.packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+                setAppPackageName(context.packageName)
+                setSize(file.length())
+            }
+            val sessionId = installer.createSession(params)
+            installer.openSession(sessionId).use { session ->
+                file.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, file.length()).use { out ->
+                        input.copyTo(out, 1 shl 16)
+                        session.fsync(out)
+                    }
+                }
+                // Explicit: the receiver is not exported, and only this PendingIntent may reach it.
+                val callback = Intent(context, InstallResultReceiver::class.java).setAction(InstallResultReceiver.ACTION)
+                // Mutable: the system fills in the status extras.
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                session.commit(PendingIntent.getBroadcast(context, sessionId, callback, flags).intentSender)
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            android.util.Log.w("AppUpdater", "session install failed, trying ACTION_VIEW", e)
+            withContext(Dispatchers.Main) { installWithViewIntent(context, file) }
+        }
+    }
+
+    private fun installWithViewIntent(context: Context, file: File) {
+        try {
+            val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
             context.startActivity(installIntent)
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to launch package installer.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "This device couldn't open the installer. Nothing was installed.", Toast.LENGTH_LONG).show()
         }
     }
 }
