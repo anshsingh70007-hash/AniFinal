@@ -1,0 +1,9 @@
+{
+  "package": "com.example.aniflow",
+  "signer_sha256": "b9b1424a634c58ebed2f00508d2da585853988a27ab560172999145fd78a1650",
+  "min_sdk": 24,
+  "keys": ["k1", "k2"],
+  "mirrors": [
+    "https://github.com/anshsingh70007-hash/AniFinal/releases/latest/download/update.json"
+  ]
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older. Only the user's own lists and settings are backed up; caches and provider
+     mappings rebuild themselves and are device-specific. -->
+<full-backup-content>
+    <include domain="file" path="datastore/watchlist_preferences.preferences_pb"/>
+    <include domain="file" path="datastore/watch_history_preferences.preferences_pb"/>
+    <include domain="file" path="datastore/settings_preferences.preferences_pb"/>
+    <include domain="file" path="datastore/user_feedback_preferences.preferences_pb"/>
+</full-backup-content>

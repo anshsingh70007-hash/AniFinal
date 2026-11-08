@@ -1,0 +1,43 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+/AniFinal.apk
+/.idea/
+
+# Release signing material — never commit these. Back them up outside the repo:
+# losing them means you can no longer ship an update to installed users.
+/keystore/
+/keystore.properties
+.kotlin/
+
+
+# Any signing key, wherever it lands.
+*.jks
+*.keystore
+*.p12
+
+# Update channel build output (APKs + signed manifest); upload it, never commit it.
+/dist/
+
+# Private keys of any kind (update-channel keys live in /keystore/, but just in case).
+*.pem
+
+# Release APKs go to GitHub Releases, not into git.
+/releases/
+*.apk
+
+# Python caches and local scratch.
+__pycache__/
+/scratch/

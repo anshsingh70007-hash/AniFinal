@@ -1,0 +1,4 @@
+releases/*.apk filter=lfs diff=lfs merge=lfs -text
+releases/AniFinal_1.8.5-redesign.apk filter=lfs diff=lfs merge=lfs -text
+releases/backup/AniFinal_1.8.4-redesign.apk filter=lfs diff=lfs merge=lfs -text
+*.apk filter=lfs diff=lfs merge=lfs -text

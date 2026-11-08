@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ forces a system splash. Keep it a blank warm-black frame so it hands off
+         seamlessly to the in-app stamp animation instead of showing the icon twice. -->
+    <style name="Theme.AniFlow" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">@color/aniflow_night</item>
+        <item name="android:windowSplashScreenBackground">@color/aniflow_night</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+    </style>
+</resources>

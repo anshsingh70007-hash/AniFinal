@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AniFlow TV banner: arch A + wordmark. Geometry: ui/brand/AniFlowBrand.kt. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp" android:height="180dp" android:viewportWidth="320" android:viewportHeight="180">
+    <path android:pathData="M0,0 H320 V180 H0 Z">
+        <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="0" android:startY="0" android:endX="0" android:endY="180" android:startColor="#FF1E0B36" android:endColor="#FF07050C"/></aapt:attr>
+    </path>
+    <path android:pathData="M0,0 H320 V180 H0 Z">
+        <aapt:attr name="android:fillColor"><gradient android:type="radial" android:centerX="51.01" android:centerY="90" android:gradientRadius="120"><item android:offset="0" android:color="#735A189A"/><item android:offset="0.55" android:color="#265A189A"/><item android:offset="1" android:color="#005A189A"/></gradient></aapt:attr>
+    </path>
+    <group android:translateX="10.9" android:translateY="46" android:scaleX="0.88" android:scaleY="0.88">
+        <path android:fillType="evenOdd" android:pathData="M12,92 C12,46 30,8 50,8 C70,8 88,46 88,80 Q88.6,90.5 97,92 L62,92 C62,75 57,62 50,62 C43,62 38,75 38,92 Z M44.6,29.6 L58.9,38.6 Q61,40 58.9,41.4 L44.6,50.4 Q42.4,51.8 42.4,49.2 L42.4,30.8 Q42.4,28.2 44.6,29.6 Z">
+            <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="18.8" android:startY="9.7" android:endX="90.2" android:endY="92"><item android:offset="0" android:color="#FF6A3CF0"/><item android:offset="0.46" android:color="#FF9147E4"/><item android:offset="0.8" android:color="#FFD650C6"/><item android:offset="1" android:color="#FFFF6FA5"/></gradient></aapt:attr>
+        </path>
+    </group>
+    <group android:translateX="107.06" android:translateY="72.14" android:scaleX="0.71" android:scaleY="0.71">
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M39.5,14 V60 M39.5,37 A18.5,18.5 0 1 1 2.5,37 A18.5,18.5 0 1 1 39.5,37"/>
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M55.5,14 V60 M55.5,37 A18.5,18.5 0 0 1 92.5,37 V60"/>
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M108.5,14 V60"/>
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M130.5,60 V8.5 A14,14 0 0 1 144.5,-5.5 M120,18.5 H146"/>
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M156.5,-10 V60"/>
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M172.5,37 A18.5,18.5 0 1 1 209.5,37 A18.5,18.5 0 1 1 172.5,37"/>
+        <path android:strokeColor="#F3ECFF" android:strokeWidth="9" android:strokeLineCap="butt" android:strokeLineJoin="miter" android:pathData="M225.5,14 V46 A9.5,9.5 0 0 0 244.5,46 V24 M244.5,46 A9.5,9.5 0 0 0 263.5,46 V14"/>
+        <path android:fillColor="#C77DFF" android:pathData="M105.4,-6 H111.6 A2.4,2.4 0 0 1 114,-3.6 V2.6 A2.4,2.4 0 0 1 111.6,5 H105.4 A2.4,2.4 0 0 1 103,2.6 V-3.6 A2.4,2.4 0 0 1 105.4,-6 Z"/>
+    </group>
+</vector>

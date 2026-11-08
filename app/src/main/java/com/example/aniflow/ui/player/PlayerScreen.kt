@@ -1,0 +1,1313 @@
+package com.example.aniflow.ui.player
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.media.AudioManager
+import android.view.KeyEvent
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.annotation.OptIn
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
+import com.example.aniflow.DeviceType
+import com.example.aniflow.LocalDeviceType
+import com.example.aniflow.data.*
+import com.example.aniflow.data.model.*
+import com.example.aniflow.data.repository.AnimeRepository
+import com.example.aniflow.theme.*
+import com.example.aniflow.ui.redesign.theme.glassSurface
+import com.example.aniflow.ui.redesign.theme.focusGlow
+import com.example.aniflow.ui.redesign.theme.GlassTokens
+import com.example.aniflow.ui.player.components.QualitySelector
+import com.example.aniflow.ui.player.components.SubtitleSelector
+import com.example.aniflow.ui.player.components.SpeedSelector
+import com.example.aniflow.ui.player.components.AdvancedServerProviderSelector
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+@OptIn(UnstableApi::class)
+@Composable
+fun PlayerScreen(
+    animeId: Int,
+    episodeNumber: Int,
+    repository: AnimeRepository,
+    deviceType: DeviceType,
+    watchHistoryStore: WatchHistoryStore,
+    onBack: () -> Unit
+) {
+    com.example.aniflow.ui.sound.Sfx.MuteWhileShown()
+    val context = LocalContext.current
+    val viewModel: PlayerViewModel = viewModel {
+        PlayerViewModel(repository, watchHistoryStore, SettingsStore(context.applicationContext))
+    }
+    val coroutineScope = rememberCoroutineScope()
+
+    // No native stream resolved: hand over to the host's own embedded player. Returning here
+    // disposes the ExoPlayer below (its DisposableEffect releases it).
+    val embedUrl by viewModel.embedUrl.collectAsStateWithLifecycle()
+    embedUrl?.let { url ->
+        EmbedPlayer(url = url, viewModel = viewModel, animeId = animeId, deviceType = deviceType, onBack = onBack)
+        return
+    }
+
+    val anime by viewModel.anime.collectAsStateWithLifecycle()
+    val episodeList by viewModel.episodeList.collectAsStateWithLifecycle()
+    val currentEpisodeIndex by viewModel.currentEpisodeIndex.collectAsStateWithLifecycle()
+    val streamingSources by viewModel.streamingSources.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val hasError by viewModel.hasError.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val isBuffering by viewModel.isBuffering.collectAsStateWithLifecycle()
+    
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
+    
+    val selectedSource by viewModel.selectedSource.collectAsStateWithLifecycle()
+    val selectedSubtitle by viewModel.selectedSubtitle.collectAsStateWithLifecycle()
+    val selectedVideoQuality by viewModel.selectedVideoQuality.collectAsStateWithLifecycle()
+    val selectedQualityPolicy by viewModel.selectedQualityPolicy.collectAsStateWithLifecycle()
+    val providerStatuses by viewModel.providerStatuses.collectAsStateWithLifecycle()
+    val selectedAudioType by viewModel.selectedAudioType.collectAsStateWithLifecycle()
+
+    var showAdvancedServerSelector by remember { mutableStateOf(false) }
+    var showQualitySelector by remember { mutableStateOf(false) }
+    var showSubtitleSelector by remember { mutableStateOf(false) }
+    var showSpeedSelector by remember { mutableStateOf(false) }
+    val isOverlayVisible = showQualitySelector || showSubtitleSelector || showSpeedSelector || showAdvancedServerSelector
+
+    var controlsVisible by remember { mutableStateOf(true) }
+    
+    BackHandler(enabled = true) {
+        if (controlsVisible) {
+            onBack()
+        } else {
+            controlsVisible = true
+        }
+    }
+    
+    val focusRequester = remember { FocusRequester() }
+    val playPauseFocusRequester = remember { FocusRequester() }
+
+    var showRewindIndicator by remember { mutableStateOf(false) }
+    var showForwardIndicator by remember { mutableStateOf(false) }
+
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    var currentVolume by remember { mutableStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+
+    val isRedesign = remember { context.packageName.endsWith(".redesign") }
+
+    // Process-wide singleton so the bitrate estimate survives between episodes and the
+    // next episode starts near the right quality instead of at the cold-start guess.
+    val bandwidthMeter = remember {
+        androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.getSingletonInstance(context)
+    }
+
+    val trackSelector = remember {
+        DefaultTrackSelector(context, AdaptiveTrackSelection.Factory())
+    }
+
+    // NOTE: no setTransferListener(bandwidthMeter) here. ExoPlayer already attaches the meter
+    // passed to setBandwidthMeter() to every media DataSource; registering it a second time
+    // counted every byte twice, so ABR thought the link was ~2x faster than it is, picked a
+    // variant it could not sustain, stalled, dropped, and climbed again.
+    val httpDataSourceFactory = remember {
+        androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(15_000)
+            .setAllowCrossProtocolRedirects(true)
+    }
+
+    val mediaSourceFactory = remember {
+        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+            AdBlockingDataSourceFactory(httpDataSourceFactory)
+        )
+            // Retry a failed segment/playlist load 6 times (default 3) before it becomes a fatal
+            // player error. Flaky Wi-Fi on a TV used to escalate straight into a server switch.
+            .setLoadErrorHandlingPolicy(
+                androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(6)
+            )
+    }
+
+    var activeEpisodeIndex by remember { mutableStateOf(currentEpisodeIndex) }
+    var hasPlayStarted by remember { mutableStateOf(false) }
+    var inPlaceRetries by remember { mutableIntStateOf(0) }
+
+    var activePlayerRef by remember { mutableStateOf<ExoPlayer?>(null) }
+
+    val exoPlayer = remember(animeId) {
+        activePlayerRef?.let { oldPlayer ->
+            try {
+                oldPlayer.stop()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        val loadControl = buildMemoryAwareLoadControl(context)
+        
+        val isEmulator = android.os.Build.HARDWARE.contains("goldfish") ||
+                android.os.Build.HARDWARE.contains("ranchu") ||
+                android.os.Build.PRODUCT.contains("sdk_gphone") ||
+                android.os.Build.MODEL.contains("Emulator") ||
+                android.os.Build.MODEL.contains("Android SDK built for x86")
+
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+            setEnableDecoderFallback(true)
+            if (isEmulator) {
+                setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+                    val decoders = androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT
+                        .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+                    decoders.sortedBy { decoder ->
+                        val name = decoder.name.lowercase()
+                        if (name.contains("goldfish") || name.contains("ranchu")) 2
+                        else if (name.startsWith("c2.android.") || name.startsWith("omx.google.")) 0
+                        else 1
+                    }
+                }
+            }
+        }
+
+        val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
+            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+            .build()
+
+        val newPlayer = ExoPlayer.Builder(context, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
+            .setBandwidthMeter(bandwidthMeter)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
+            .setSeekBackIncrementMs(10000)
+            .setSeekForwardIncrementMs(10000)
+            .build()
+        activePlayerRef = newPlayer
+        newPlayer
+    }
+
+    val currentEpUpdated by rememberUpdatedState(episodeList.getOrNull(currentEpisodeIndex))
+
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                viewModel.isBuffering.value = state == Player.STATE_BUFFERING
+                viewModel.totalDuration.value = exoPlayer.duration.coerceAtLeast(0L)
+                if (state == Player.STATE_READY) {
+                    hasPlayStarted = true
+                }
+                if (state == Player.STATE_ENDED) {
+                    val autoPlay = viewModel.autoPlayNextEpisode.value
+                    val nextIndex = viewModel.currentEpisodeIndex.value + 1
+                    if (autoPlay && nextIndex in viewModel.episodeList.value.indices) {
+                        viewModel.playNextEpisode()
+                    }
+                }
+            }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                viewModel.isPlaying.value = playing
+                viewModel.onPlaybackStateChanged(playing)
+                if (!playing) {
+                    val pos = exoPlayer.currentPosition
+                    val dur = exoPlayer.duration
+                    val ep = currentEpUpdated
+                    if (pos > 0 && dur > 0 && ep != null) {
+                        viewModel.saveProgress(animeId, pos, dur, ep)
+                    }
+                }
+            }
+            override fun onRenderedFirstFrame() {
+                viewModel.onFirstFrameRendered()
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val pos = exoPlayer.currentPosition
+                when {
+                    // Live-window drift is not a dead server: jump to the live edge.
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> {
+                        exoPlayer.seekToDefaultPosition()
+                        exoPlayer.prepare()
+                    }
+                    // A dropped connection or timeout on a server that was working: retry the
+                    // same server in place once before abandoning it. Previously every Wi-Fi blip
+                    // became a full server switch (new URL, new manifest, rebuffer from scratch).
+                    hasPlayStarted && inPlaceRetries < 1 && (
+                        error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                        error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                    ) -> {
+                        inPlaceRetries++
+                        exoPlayer.prepare()
+                        exoPlayer.seekTo(pos)
+                    }
+                    else -> viewModel.handlePlaybackError(error, pos)
+                }
+            }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                // Only needed once per media item: a fixed-height choice made before the HLS
+                // variants were known gets bound to a real track here. Re-applying on every
+                // tracks change (the old behaviour) re-triggered selection in a loop.
+                val policy = viewModel.selectedQualityPolicy.value
+                // An override from a previous media item points at a dead TrackGroup, so check
+                // against the groups of *this* item, not just "any video override exists".
+                val overrides = exoPlayer.trackSelectionParameters.overrides
+                val hasVideoOverride = tracks.groups.any {
+                    it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO &&
+                        overrides.containsKey(it.mediaTrackGroup)
+                }
+                if (policy is QualityPolicy.FixedHeight && !hasVideoOverride) {
+                    applyVideoQualityOverride(exoPlayer, policy)
+                }
+
+                val currentSource = viewModel.selectedSource.value
+                if (currentSource != null && currentSource.qualityPolicy is QualityPolicy.Auto) {
+                    val heights = mutableListOf<Int>()
+                    val videoType = androidx.media3.common.C.TRACK_TYPE_VIDEO
+                    for (groupInfo in tracks.groups) {
+                        if (groupInfo.type == videoType) {
+                            val group = groupInfo.mediaTrackGroup
+                            for (i in 0 until group.length) {
+                                val format = group.getFormat(i)
+                                if (format.height > 0) {
+                                    heights.add(format.height)
+                                }
+                            }
+                        }
+                    }
+                    val sortedHeights = heights.distinct().sortedDescending()
+                    if (sortedHeights.isNotEmpty()) {
+                        viewModel.availableHeightsForCurrentEndpoint.value = sortedHeights
+                    }
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            val pos = exoPlayer.currentPosition
+            val dur = exoPlayer.duration
+            val ep = currentEpUpdated
+            if (pos > 0 && dur > 0 && ep != null) {
+                viewModel.saveProgress(animeId, pos, dur, ep)
+            }
+            exoPlayer.release()
+            if (activePlayerRef == exoPlayer) {
+                activePlayerRef = null
+            }
+        }
+    }
+
+    LaunchedEffect(animeId, episodeNumber) {
+        viewModel.loadAnimeDetails(animeId, episodeNumber)
+    }
+
+    LaunchedEffect(selectedSource) {
+        val source = selectedSource
+        if (source != null) {
+            hasPlayStarted = false
+            val currentPos = exoPlayer.currentPosition
+            viewModel.hasError.value = false
+            viewModel.errorMessage.value = ""
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+            viewModel.isBuffering.value = true
+
+            val headers = buildPlaybackHeaders(source, streamingSources?.headers)
+            httpDataSourceFactory.setDefaultRequestProperties(headers)
+
+            val resolvedUrl = source.url
+            // Only declare HLS when the URL or source metadata confirms it.
+            // Treating all proxy URLs as HLS was breaking MP4 and single-quality streams.
+            val isHls = source.isM3U8 ||
+                resolvedUrl.contains(".m3u8", ignoreCase = true) ||
+                resolvedUrl.contains("index.txt", ignoreCase = true)
+            val mediaItemBuilder = MediaItem.Builder()
+                .setUri(resolvedUrl)
+                .apply {
+                    if (isHls) {
+                        setMimeType(MimeTypes.APPLICATION_M3U8)
+                    }
+                }
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(episodeList.getOrNull(currentEpisodeIndex)?.name ?: "Episode")
+                        .setArtist(anime?.title ?: "")
+                        .build()
+                )
+
+            val subtitles = streamingSources?.subtitles ?: emptyList()
+            val subtitleConfigs = subtitles.map { sub ->
+                MediaItem.SubtitleConfiguration.Builder(android.net.Uri.parse(sub.url))
+                    .setMimeType(
+                        when {
+                            sub.url.contains(".ass", ignoreCase = true) -> MimeTypes.TEXT_SSA
+                            sub.url.contains(".srt", ignoreCase = true) -> MimeTypes.APPLICATION_SUBRIP
+                            else -> MimeTypes.TEXT_VTT
+                        }
+                    )
+                    .setLanguage(sub.lang)
+                    .setLabel(sub.label)
+                    .build()
+            }
+            mediaItemBuilder.setSubtitleConfigurations(subtitleConfigs)
+
+            val isEpisodeSwitch = viewModel.isEpisodeSwitch.value
+            val requestedResume = viewModel.resumeAtMs.value
+            viewModel.resumeAtMs.value = null
+            inPlaceRetries = 0
+            val resumePos = if (isEpisodeSwitch) {
+                viewModel.isEpisodeSwitch.value = false
+                0L
+            } else if (requestedResume != null && requestedResume > 0) {
+                requestedResume
+            } else if (currentPos > 0) {
+                currentPos
+            } else {
+                val savedEntry = viewModel.getSavedProgressEntry(animeId)
+                val currentEpNum = episodeList.getOrNull(currentEpisodeIndex)?.number ?: -1
+                if (savedEntry != null && savedEntry.episodeNumber == currentEpNum) {
+                    savedEntry.progressMs
+                } else {
+                    0L
+                }
+            }
+            activeEpisodeIndex = currentEpisodeIndex
+
+            exoPlayer.setMediaItem(mediaItemBuilder.build())
+            exoPlayer.setPlaybackSpeed(playbackSpeed)
+            exoPlayer.prepare()
+
+            if (resumePos > 0) {
+                exoPlayer.seekTo(resumePos)
+            }
+            exoPlayer.playWhenReady = true
+        }
+    }
+
+    LaunchedEffect(selectedQualityPolicy, exoPlayer) {
+        applyVideoQualityOverride(exoPlayer, selectedQualityPolicy)
+    }
+
+    LaunchedEffect(selectedSubtitle, exoPlayer) {
+        val sub = selectedSubtitle
+        val currentParams = exoPlayer.trackSelectionParameters
+        val parameters = currentParams
+            .buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, sub == null)
+            .apply {
+                if (sub != null) {
+                    setPreferredTextLanguage(sub.lang)
+                }
+            }
+            .build()
+        if (parameters != currentParams) {
+            exoPlayer.trackSelectionParameters = parameters
+        }
+    }
+
+    // UI position ticker: fast while controls are visible, slow otherwise.
+    LaunchedEffect(exoPlayer, controlsVisible) {
+        while (true) {
+            delay(if (controlsVisible) 250L else 2000L)
+            if (exoPlayer.isPlaying || (exoPlayer.playbackState == Player.STATE_READY && controlsVisible)) {
+                viewModel.currentPosition.value = exoPlayer.currentPosition
+                // C.TIME_UNSET is negative; never let it reach the seek bar.
+                viewModel.totalDuration.value = exoPlayer.duration.coerceAtLeast(0L)
+            }
+        }
+    }
+
+    // Progress checkpoint every 15 s of playback. Keyed only on the player, so toggling the
+    // controls no longer resets the timer (users who kept tapping never got a checkpoint).
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            delay(15_000L)
+            val dur = exoPlayer.duration
+            if (exoPlayer.isPlaying && dur > 0) {
+                val ep = viewModel.episodeList.value.getOrNull(viewModel.currentEpisodeIndex.value)
+                if (ep != null) viewModel.saveProgress(animeId, exoPlayer.currentPosition, dur, ep)
+            }
+        }
+    }
+
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(controlsVisible, isPlaying, lastInteractionTime, isOverlayVisible) {
+        if (controlsVisible && isPlaying && !isOverlayVisible) {
+            delay(5000)
+            controlsVisible = false
+        }
+    }
+
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            delay(100)
+            try {
+                playPauseFocusRequester.requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        } else {
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    LaunchedEffect(deviceType) {
+        val activity = context as? ComponentActivity
+        if (deviceType == DeviceType.PHONE) {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+        }
+        val window = activity?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+    
+    DisposableEffect(deviceType) {
+        onDispose {
+            val activity = context as? ComponentActivity
+            if (deviceType == DeviceType.PHONE) {
+                activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
+            }
+            val window = activity?.window
+            if (window != null) {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    // P-03: Pause-on-background lifecycle contract
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val currentEpForLifecycle by rememberUpdatedState(episodeList.getOrNull(currentEpisodeIndex))
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                try {
+                    exoPlayer.pause()
+                    val pos = exoPlayer.currentPosition
+                    val dur = exoPlayer.duration
+                    val ep = currentEpForLifecycle
+                    if (pos > 0 && dur > 0 && ep != null) {
+                        viewModel.saveProgress(animeId, pos, dur, ep)
+                    }
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                    lastInteractionTime = System.currentTimeMillis()
+                    val keyCode = event.nativeKeyEvent.keyCode
+                    if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                        return@onKeyEvent false
+                    }
+                    if (!controlsVisible) {
+                        when (keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                controlsVisible = true
+                                exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                                viewModel.currentPosition.value = exoPlayer.currentPosition
+                                return@onKeyEvent true
+                            }
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                controlsVisible = true
+                                exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration))
+                                viewModel.currentPosition.value = exoPlayer.currentPosition
+                                return@onKeyEvent true
+                            }
+                            else -> {
+                                controlsVisible = true
+                                return@onKeyEvent true
+                            }
+                        }
+                    }
+                }
+                false
+            }
+    ) {
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = PrimaryAccent)
+            }
+        } else if (hasError) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Rounded.Warning, contentDescription = "Error", tint = TertiaryAccent, modifier = Modifier.size(64.dp))
+                Spacer(Modifier.height(16.dp))
+                Text(text = errorMessage, color = TextPrimary, fontSize = 18.sp)
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(
+                        onClick = { viewModel.loadStreamingSourcesForIndex(currentEpisodeIndex) },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent)
+                    ) {
+                        Text("Retry")
+                    }
+                    if (streamingSources != null && streamingSources!!.sources.isNotEmpty()) {
+                        Button(
+                            onClick = { showAdvancedServerSelector = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = SecondaryAccent)
+                        ) {
+                            Text("Switch Server")
+                        }
+                    }
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusProperties { canFocus = !isOverlayVisible }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                controlsVisible = !controlsVisible
+                            },
+                            onDoubleTap = { offset ->
+                                lastInteractionTime = System.currentTimeMillis()
+                                val halfWidth = size.width / 2
+                                if (offset.x < halfWidth) {
+                                    exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                                    showRewindIndicator = true
+                                    coroutineScope.launch {
+                                        delay(650)
+                                        showRewindIndicator = false
+                                    }
+                                } else {
+                                    exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration))
+                                    showForwardIndicator = true
+                                    coroutineScope.launch {
+                                        delay(650)
+                                        showForwardIndicator = false
+                                    }
+                                }
+                            }
+                        )
+                    }
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            useController = false
+                            keepScreenOn = true
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        }
+                    },
+                    update = { playerView ->
+                        playerView.keepScreenOn = true
+                        if (playerView.player != exoPlayer) {
+                            playerView.player = exoPlayer
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                if (isBuffering) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = PrimaryAccent, modifier = Modifier.size(48.dp))
+                    }
+                }
+
+                // Centered Double-Tap skip indicator overlays
+                if (showRewindIndicator) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(100.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Rounded.KeyboardArrowLeft, contentDescription = "Rewind", tint = TextPrimary, modifier = Modifier.size(36.dp))
+                            Text("-10s", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
+                }
+
+                if (showForwardIndicator) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(100.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Rounded.KeyboardArrowRight, contentDescription = "Forward", tint = TextPrimary, modifier = Modifier.size(36.dp))
+                            Text("+10s", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
+                }
+
+                // Control Overlays
+                AnimatedVisibility(
+                    visible = controlsVisible,
+                    enter = fadeIn(tween(300)),
+                    exit = fadeOut(tween(400))
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Gradient Background
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.Black.copy(alpha = 0.7f),
+                                            Color.Transparent,
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.85f)
+                                        )
+                                    )
+                                )
+                        )
+
+                        // Main Controls Layout
+                        Box(modifier = Modifier.fillMaxSize()) {
+                        // Top navigation bar
+                        val topBarModifier = if (isRedesign) {
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 16.dp, start = 24.dp, end = 24.dp)
+                                .fillMaxWidth()
+                                .glassSurface(shape = RoundedCornerShape(16.dp))
+                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                        } else {
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        }
+                        Row(
+                            modifier = topBarModifier,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            var isBackFocused by remember { mutableStateOf(false) }
+                            val backButtonModifier = if (isRedesign) {
+                                Modifier
+                                    .focusGlow(isBackFocused, shape = RoundedCornerShape(20.dp))
+                                    .glassSurface(shape = RoundedCornerShape(20.dp), borderWidth = 1.dp, isFocused = isBackFocused)
+                                    .onFocusChanged { isBackFocused = it.isFocused }
+                                    .clickable { onBack() }
+                                    .padding(8.dp)
+                            } else {
+                                Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (isBackFocused) PrimaryAccent else Color.Transparent)
+                                    .border(
+                                        width = if (isBackFocused) 2.dp else 0.dp,
+                                        color = if (isBackFocused) SecondaryAccent else Color.Transparent,
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                    .onFocusChanged { isBackFocused = it.isFocused }
+                                    .clickable { onBack() }
+                                    .padding(8.dp)
+                            }
+                            Box(
+                                modifier = backButtonModifier
+                            ) {
+                                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                val epNumberStr = episodeList.getOrNull(currentEpisodeIndex)?.let { ep ->
+                                    "Ep ${ep.number} / ${episodeList.size}"
+                                } ?: "Ep ${currentEpisodeIndex + 1} / ${episodeList.size}"
+                                val epName = episodeList.getOrNull(currentEpisodeIndex)?.name ?: "Episode Info"
+                                Text(text = anime?.title ?: "Stream Player", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text(text = "$epNumberStr - $epName", color = TextSecondary, fontSize = 14.sp)
+                            }
+                        }
+
+                        // Center Playback Skip Keys (Phone only)
+                        if (deviceType == DeviceType.PHONE) {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .wrapContentSize(),
+                                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = { viewModel.playPrevEpisode() }, enabled = currentEpisodeIndex > 0) {
+                                    Text("|<", color = if (currentEpisodeIndex > 0) TextPrimary else TextTertiary, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                                }
+                                val playPauseModifier = if (isRedesign) {
+                                    Modifier
+                                        .size(72.dp)
+                                        .glassSurface(shape = RoundedCornerShape(36.dp), borderWidth = 2.dp, isFocused = true)
+                                } else {
+                                    Modifier
+                                        .size(72.dp)
+                                        .background(PrimaryAccent, RoundedCornerShape(36.dp))
+                                }
+                                IconButton(
+                                    onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
+                                    modifier = playPauseModifier
+                                ) {
+                                    if (isPlaying) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.width(6.dp).height(24.dp).background(TextPrimary))
+                                            Box(modifier = Modifier.width(6.dp).height(24.dp).background(TextPrimary))
+                                        }
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Rounded.PlayArrow,
+                                            contentDescription = "Play",
+                                            modifier = Modifier.size(48.dp),
+                                            tint = TextPrimary
+                                        )
+                                    }
+                                }
+                                IconButton(onClick = { viewModel.playNextEpisode() }, enabled = currentEpisodeIndex < episodeList.lastIndex) {
+                                    Text(">|", color = if (currentEpisodeIndex < episodeList.lastIndex) TextPrimary else TextTertiary, fontWeight = FontWeight.Bold, fontSize = 24.sp)
+                                }
+                            }
+                        }
+
+                        // Bottom Seek & Controls
+                        val bottomBarModifier = if (isRedesign) {
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(
+                                    bottom = if (deviceType == DeviceType.TV) 16.dp else 24.dp,
+                                    start = if (deviceType == DeviceType.TV) 48.dp else 24.dp,
+                                    end = if (deviceType == DeviceType.TV) 48.dp else 24.dp
+                                )
+                                .fillMaxWidth()
+                                .glassSurface(shape = RoundedCornerShape(16.dp))
+                                .padding(
+                                    horizontal = 20.dp,
+                                    vertical = if (deviceType == DeviceType.TV) 10.dp else 16.dp
+                                )
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 16.dp)
+                                .align(Alignment.BottomCenter)
+                        }
+                        Column(
+                            modifier = bottomBarModifier
+                        ) {
+                            if (deviceType == DeviceType.TV) {
+                                // Put Slider and Time on the same Row to save vertical space
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ScopedProgressSlider(
+                                            viewModel = viewModel,
+                                            exoPlayer = exoPlayer,
+                                            deviceType = deviceType,
+                                            modifier = Modifier.fillMaxWidth().height(8.dp)
+                                        )
+                                    }
+                                    ScopedProgressText(viewModel = viewModel)
+                                }
+                                
+                                Spacer(Modifier.height(10.dp))
+                                
+                                // Centered controls in a single compact row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TvPlayerControlItem(
+                                            text = "Prev Ep",
+                                            isRedesign = isRedesign,
+                                            onClick = { viewModel.playPrevEpisode() }
+                                        )
+                                        TvPlayerControlItem(
+                                            text = "-10s",
+                                            isRedesign = isRedesign,
+                                            onClick = { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)) }
+                                        )
+                                        TvPlayerControlItem(
+                                            text = if (isPlaying) "Pause" else "Play",
+                                            focusRequester = playPauseFocusRequester,
+                                            isRedesign = isRedesign,
+                                            onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }
+                                        )
+                                        TvPlayerControlItem(
+                                            text = "+10s",
+                                            isRedesign = isRedesign,
+                                            onClick = { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration)) }
+                                        )
+                                        TvPlayerControlItem(
+                                            text = "Next Ep",
+                                            isRedesign = isRedesign,
+                                            onClick = { viewModel.playNextEpisode() }
+                                        )
+                                        
+                                        val qualityLabel = when (val q = selectedQualityPolicy) {
+                                            is QualityPolicy.Auto -> "Auto"
+                                            is QualityPolicy.MaxAvailable -> "Best"
+                                            is QualityPolicy.FixedHeight -> "${q.height}p"
+                                        }
+                                        val availableHeights by viewModel.availableHeightsForCurrentEndpoint.collectAsStateWithLifecycle()
+                                        val showQualityButton = availableHeights.size > 1
+                                        if (showQualityButton) {
+                                            TvPlayerControlItem(
+                                                text = qualityLabel,
+                                                isRedesign = isRedesign,
+                                                onClick = { showQualitySelector = true }
+                                            )
+                                        }
+                                        
+                                        TvPlayerControlItem(
+                                            text = "Subtitles",
+                                            isRedesign = isRedesign,
+                                            onClick = { showSubtitleSelector = true }
+                                        )
+                                        TvPlayerControlItem(
+                                            text = if (selectedAudioType == AudioType.SUB) "Audio: SUB" else "Audio: DUB",
+                                            isRedesign = isRedesign,
+                                            onClick = {
+                                                exoPlayer.pause()
+                                                val nextType = if (selectedAudioType == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                                                viewModel.selectAudioType(nextType)
+                                            }
+                                        )
+                                        TvPlayerControlItem(
+                                            text = "Speed",
+                                            isRedesign = isRedesign,
+                                            onClick = { showSpeedSelector = true }
+                                        )
+                                    }
+                                }
+                            } else {
+                                ScopedProgressSlider(
+                                    viewModel = viewModel,
+                                    exoPlayer = exoPlayer,
+                                    deviceType = deviceType,
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    ScopedProgressText(viewModel = viewModel)
+                                    
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val qualityLabel = when (val q = selectedQualityPolicy) {
+                                            is QualityPolicy.Auto -> "Auto"
+                                            is QualityPolicy.MaxAvailable -> "Best"
+                                            is QualityPolicy.FixedHeight -> "${q.height}p"
+                                        }
+                                        val availableHeights by viewModel.availableHeightsForCurrentEndpoint.collectAsStateWithLifecycle()
+                                        val showQualityButton = availableHeights.size > 1
+                                        PhonePlayerControlItem(text = "-10s", isRedesign = isRedesign, onClick = { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)) })
+                                        PhonePlayerControlItem(text = "+10s", isRedesign = isRedesign, onClick = { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration)) })
+                                        if (showQualityButton) {
+                                            PhonePlayerControlItem(text = qualityLabel, isRedesign = isRedesign, onClick = { showQualitySelector = true })
+                                        }
+                                        PhonePlayerControlItem(text = "Subtitles", isRedesign = isRedesign, onClick = { showSubtitleSelector = true })
+                                        PhonePlayerControlItem(
+                                            text = if (selectedAudioType == AudioType.SUB) "SUB" else "DUB",
+                                            isRedesign = isRedesign,
+                                            onClick = {
+                                                exoPlayer.pause()
+                                                val nextType = if (selectedAudioType == AudioType.SUB) AudioType.DUB else AudioType.SUB
+                                                viewModel.selectAudioType(nextType)
+                                            }
+                                        )
+                                        PhonePlayerControlItem(text = "Speed", isRedesign = isRedesign, onClick = { showSpeedSelector = true })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+    if (showAdvancedServerSelector) {
+        AdvancedServerProviderSelector(
+            providerStatuses = providerStatuses,
+            sources = streamingSources?.sources ?: emptyList(),
+            selectedSource = selectedSource,
+            onSelectProvider = { provider ->
+                viewModel.selectProviderManual(provider, exoPlayer.currentPosition)
+            },
+            onSelectServer = { server, audioType -> viewModel.selectServerAndType(server, audioType) },
+            onDismiss = { showAdvancedServerSelector = false }
+        )
+    }
+
+    val availableHeights by viewModel.availableHeightsForCurrentEndpoint.collectAsStateWithLifecycle()
+    if (showQualitySelector) {
+        QualitySelector(
+            availableHeights = availableHeights,
+            selectedQualityPolicy = selectedQualityPolicy,
+            onSelectQuality = { viewModel.selectQualityByResolution(it) },
+            onDismiss = { showQualitySelector = false }
+        )
+    }
+
+    if (showSubtitleSelector && streamingSources != null) {
+        SubtitleSelector(
+            subtitles = streamingSources!!.subtitles,
+            selectedSubtitle = selectedSubtitle,
+            onSelect = { viewModel.selectSubtitle(it) },
+            onDismiss = { showSubtitleSelector = false }
+        )
+    }
+
+    if (showSpeedSelector) {
+        SpeedSelector(
+            selectedSpeed = playbackSpeed,
+            onSelect = {
+                exoPlayer.setPlaybackSpeed(it)
+                viewModel.playbackSpeed.value = it
+            },
+            onDismiss = { showSpeedSelector = false }
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        if (deviceType == DeviceType.TV) {
+            focusRequester.requestFocus()
+        }
+    }
+}
+
+@Composable
+fun PhonePlayerControlItem(
+    text: String,
+    isRedesign: Boolean = false,
+    onClick: () -> Unit
+) {
+    val modifier = Modifier
+        .clip(RoundedCornerShape(8.dp))
+        .let {
+            if (isRedesign) {
+                it
+                    .glassSurface(shape = RoundedCornerShape(8.dp), borderWidth = 1.dp, isFocused = false)
+                    .clickable { onClick() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            } else {
+                it.clickable { onClick() }.padding(horizontal = 8.dp, vertical = 4.dp)
+            }
+        }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Text(text = text, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+@Composable
+fun TvPlayerControlItem(
+    text: String,
+    focusRequester: FocusRequester? = null,
+    isRedesign: Boolean = false,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val modifier = Modifier
+        .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
+        .onFocusChanged { isFocused = it.isFocused }
+        .focusGlow(isFocused, shape = RoundedCornerShape(8.dp))
+        .let {
+            if (isRedesign) {
+                it.glassSurface(shape = RoundedCornerShape(8.dp), borderWidth = 1.dp, isFocused = isFocused)
+            } else {
+                it
+                    .background(if (isFocused) PrimaryAccent else SurfaceCard)
+                    .border(
+                        width = if (isFocused) 2.dp else 0.dp,
+                        color = if (isFocused) SecondaryAccent else Color.Transparent,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+            }
+        }
+        .clickable(
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null
+        ) { onClick() }
+        .padding(horizontal = 16.dp, vertical = 8.dp)
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = text, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun ScopedProgressSlider(
+    viewModel: PlayerViewModel,
+    exoPlayer: ExoPlayer,
+    deviceType: DeviceType,
+    modifier: Modifier = Modifier
+) {
+    val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
+    val totalDuration by viewModel.totalDuration.collectAsStateWithLifecycle()
+
+    if (deviceType == DeviceType.TV) {
+        val progress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color.White.copy(alpha = 0.2f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .background(PrimaryAccent)
+            )
+        }
+    } else {
+        var isDragging by remember { mutableStateOf(false) }
+        var dragPosition by remember { mutableFloatStateOf(0f) }
+
+        val displayValue = if (isDragging) dragPosition else currentPosition.toFloat()
+
+        Slider(
+            value = displayValue,
+            onValueChange = {
+                isDragging = true
+                dragPosition = it
+                // Update displayed position immediately without seeking
+                viewModel.currentPosition.value = it.toLong()
+            },
+            onValueChangeFinished = {
+                // Single seek on finger-up
+                exoPlayer.seekTo(dragPosition.toLong())
+                viewModel.currentPosition.value = dragPosition.toLong()
+                isDragging = false
+            },
+            valueRange = 0f..(totalDuration.toFloat().coerceAtLeast(1f)),
+            colors = SliderDefaults.colors(
+                activeTrackColor = PrimaryAccent,
+                inactiveTrackColor = SurfaceBorder,
+                thumbColor = SecondaryAccent
+            ),
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun ScopedProgressText(
+    viewModel: PlayerViewModel,
+    modifier: Modifier = Modifier
+) {
+    val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
+    val totalDuration by viewModel.totalDuration.collectAsStateWithLifecycle()
+
+    Text(
+        text = "${formatTime(currentPosition)} / ${formatTime(totalDuration)}",
+        color = TextSecondary,
+        fontSize = 12.sp,
+        modifier = modifier
+    )
+}
+
+@SuppressLint("DefaultLocale")
+private fun formatTime(ms: Long): String {
+    val totalSecs = ms / 1000
+    val hours = totalSecs / 3600
+    val minutes = (totalSecs % 3600) / 60
+    val seconds = totalSecs % 60
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
+    }
+}
+
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun buildPlaybackHeaders(
+    source: SourceEndpoint,
+    globalHeaders: Map<String, String>?
+): Map<String, String> {
+    val merged = LinkedHashMap<String, String>()
+    globalHeaders?.forEach { (key, value) -> merged[key] = value }
+    source.headers.forEach { (key, value) -> merged[key] = value }
+    if (!merged.containsKey("Referer")) {
+        merged["Referer"] = "https://anilight.live"
+    }
+    if (!merged.containsKey("Origin")) {
+        merged["Origin"] = "https://anilight.live"
+    }
+    return merged
+}
+
+/**
+ * Quality switching for adaptive (HLS master) streams.
+ *
+ * Auto clears every video override and lets ABR run. A fixed height pins the closest variant
+ * via a single TrackSelectionOverride. There is deliberately **no seekTo()** afterwards: the old
+ * code seeked to the current position after every parameter change, which flushed the whole
+ * buffer and forced a full rebuffer on every switch (and, because it also ran from
+ * onTracksChanged, on every track change). ExoPlayer applies a new selection on its own at the
+ * next segment boundary, keeping what is already buffered — a seamless switch.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun applyVideoQualityOverride(exoPlayer: ExoPlayer, qualityPolicy: QualityPolicy) {
+    val videoType = androidx.media3.common.C.TRACK_TYPE_VIDEO
+    val params = exoPlayer.trackSelectionParameters.buildUpon()
+        .clearOverridesOfType(videoType)
+        .clearVideoSizeConstraints()
+
+    val targetHeight = (qualityPolicy as? QualityPolicy.FixedHeight)?.height ?: 0
+    if (targetHeight > 0) {
+        // Closest variant at or below the target; else the smallest one above it.
+        var best: Pair<androidx.media3.common.TrackGroup, Int>? = null
+        var bestHeight = -1
+        for (groupInfo in exoPlayer.currentTracks.groups) {
+            if (groupInfo.type != videoType) continue
+            val group = groupInfo.mediaTrackGroup
+            for (i in 0 until group.length) {
+                if (!groupInfo.isTrackSupported(i)) continue
+                val h = group.getFormat(i).height
+                if (h <= 0) continue
+                val better = when {
+                    bestHeight < 0 -> true
+                    h <= targetHeight && (bestHeight > targetHeight || h > bestHeight) -> true
+                    h > targetHeight && bestHeight > targetHeight && h < bestHeight -> true
+                    else -> false
+                }
+                if (better) { best = group to i; bestHeight = h }
+            }
+        }
+        if (best != null) {
+            params.addOverride(androidx.media3.common.TrackSelectionOverride(best.first, best.second))
+        } else {
+            // Variants not known yet (still preparing): cap by size; onTracksChanged pins it later.
+            params.setMaxVideoSize(Int.MAX_VALUE, targetHeight)
+        }
+    }
+
+    val newParams = params.build()
+    if (exoPlayer.trackSelectionParameters != newParams) {
+        exoPlayer.trackSelectionParameters = newParams
+    }
+}
+
+/**
+ * Buffer sizing that a 1–1.5 GB Android TV (e.g. OnePlus Y1S) can survive.
+ *
+ * The old config was 25–60 s forward + 30 s back buffer with prioritizeTimeOverSizeThresholds =
+ * true, which **ignores the byte cap entirely**: a 1080p stream could pin ~90 MB of Java heap in
+ * the media buffer alone, on a device whose per-app heap is often 192–256 MB. That is an OOM
+ * crash waiting for a high-bitrate episode. Now the byte cap is enforced and scaled to the heap.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun buildMemoryAwareLoadControl(context: Context): DefaultLoadControl {
+    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+    val heapMb = am.memoryClass
+    val constrained = am.isLowRamDevice || heapMb <= 256
+    // ~1/5 of the heap for media, bounded to [16 MB, 64 MB].
+    val targetBytes = (heapMb / 5).coerceIn(16, 64) * 1024 * 1024
+    return DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            /* minBufferMs = */ if (constrained) 15_000 else 25_000,
+            /* maxBufferMs = */ if (constrained) 30_000 else 50_000,
+            /* bufferForPlaybackMs = */ 2_500,
+            /* bufferForPlaybackAfterRebufferMs = */ 5_000
+        )
+        .setTargetBufferBytes(targetBytes)
+        .setPrioritizeTimeOverSizeThresholds(false)
+        .setBackBuffer(if (constrained) 5_000 else 15_000, true)
+        .build()
+}
+

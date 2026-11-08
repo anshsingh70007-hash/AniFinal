@@ -1,0 +1,1139 @@
+package com.example.aniflow.ui.redesign
+
+import androidx.compose.animation.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import com.example.aniflow.DeviceType
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.text.font.FontStyle
+import com.example.aniflow.data.UserFeedbackStore
+import com.example.aniflow.data.UserFeedback
+import com.example.aniflow.data.model.Anime
+import com.example.aniflow.data.model.Episode
+import com.example.aniflow.data.repository.AnimeRepository
+import com.example.aniflow.data.WatchlistStore
+import com.example.aniflow.theme.*
+import com.example.aniflow.ui.redesign.components.GlassCard
+import com.example.aniflow.ui.redesign.theme.GlassTokens
+import com.example.aniflow.ui.redesign.theme.focusGlow
+import com.example.aniflow.ui.redesign.theme.glassSurface
+import com.example.aniflow.ui.redesign.theme.BleachTybwTokens
+import com.example.aniflow.ui.redesign.theme.isBleachTybw
+import com.example.aniflow.ui.redesign.components.BleachReiatsuParticles
+import com.example.aniflow.ui.redesign.components.BleachBladeSlashSheen
+import com.example.aniflow.ui.redesign.components.BleachLightingBorderGlow
+import com.example.aniflow.ui.redesign.components.BleachElectricLightning
+import com.example.aniflow.ui.redesign.components.BleachTributePill
+import com.example.aniflow.ui.redesign.components.BleachBankaiButton
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.aniflow.R
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.blur
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aniflow.data.ProviderMappingStore
+import com.example.aniflow.ui.detail.DetailUiState
+import com.example.aniflow.ui.detail.DetailViewModel
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+
+
+import com.example.aniflow.data.WatchHistoryStore
+
+@Composable
+fun RedesignDetailScreen(
+    animeId: Int,
+    repository: AnimeRepository,
+    deviceType: DeviceType,
+    watchlistStore: WatchlistStore,
+    watchHistoryStore: WatchHistoryStore,
+    userFeedbackStore: UserFeedbackStore,
+    onEpisodeClick: (Int) -> Unit,
+    onAnimeClick: (Int) -> Unit,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val viewModel: DetailViewModel = viewModel {
+        DetailViewModel(repository, ProviderMappingStore(context.applicationContext), watchHistoryStore)
+    }
+
+    LaunchedEffect(animeId) {
+        viewModel.loadAnimeDetails(animeId)
+    }
+
+    val uiState by viewModel.uiState.collectAsState()
+    val watchHistoryEntry by viewModel.watchHistoryEntry.collectAsState()
+    val isBookmarked by watchlistStore.isBookmarkedFlow(animeId).collectAsState(initial = false)
+    val userFeedbackText by userFeedbackStore.getFeedbackForAnimeFlow(animeId).collectAsState(initial = null)
+    var showFeedbackDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    var isBackFocused by remember { mutableStateOf(false) }
+
+    when (val state = uiState) {
+        is DetailUiState.Loading -> {
+            Box(modifier = Modifier.fillMaxSize().background(PrimaryDark), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = GlassTokens.GlowCyan)
+            }
+        }
+        is DetailUiState.Error -> {
+            Column(
+                modifier = Modifier.fillMaxSize().background(PrimaryDark),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = state.message, color = TextPrimary, fontSize = 16.sp)
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = { onBack() }, colors = ButtonDefaults.buttonColors(containerColor = SurfaceCard)) {
+                        Text("Back", color = TextPrimary)
+                    }
+                    Button(onClick = { viewModel.loadAnimeDetails(animeId) }, colors = ButtonDefaults.buttonColors(containerColor = GlassTokens.GlowCyan)) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+        else -> {
+            val currentAnime = when (state) {
+                is DetailUiState.Success -> state.anime
+                is DetailUiState.Empty -> state.anime
+                is DetailUiState.Ambiguous -> state.anime
+                is DetailUiState.NotFound -> state.anime
+                else -> null
+            }
+            val episodes = when (state) {
+                is DetailUiState.Success -> state.episodes
+                else -> emptyList()
+            }
+
+            if (currentAnime != null) {
+            val chunkSize = 100
+            val episodeChunks = remember(episodes) {
+                if (episodes.isEmpty()) emptyList()
+                else episodes.chunked(chunkSize)
+            }
+            var selectedChunkIndex by remember(episodes) { mutableStateOf(0) }
+            val currentEpisodes = remember(episodeChunks, selectedChunkIndex) {
+                episodeChunks.getOrNull(selectedChunkIndex) ?: emptyList()
+            }
+
+            val isBleach = currentAnime.isBleachTybw()
+
+            Box(modifier = Modifier.fillMaxSize().background(if (isBleach) BleachTybwTokens.ReiatsuObsidian else PrimaryDark)) {
+                if (isBleach) {
+                    BleachElectricLightning(modifier = Modifier.fillMaxSize(), boltCount = 3)
+                }
+
+                val isBlurry = state is DetailUiState.Ambiguous || showFeedbackDialog
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .let { if (isBlurry) it.blur(20.dp) else it }
+                            .focusProperties { canFocus = !isBlurry }
+                    ) {
+                    // Panoramic Background Image with soft dark blur overlay
+                    val bannerUrl = currentAnime.bannerImage
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (deviceType == DeviceType.TV) 380.dp else 260.dp)
+                    ) {
+                        AsyncImage(
+                            model = bannerUrl ?: currentAnime.coverImage,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (isBleach) BleachTybwTokens.ReiatsuObsidian.copy(alpha = 0.5f) else PrimaryDark.copy(alpha = 0.5f)
+                                )
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (deviceType == DeviceType.TV) 380.dp else 260.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = if (isBleach) listOf(
+                                        Color.Transparent,
+                                        BleachTybwTokens.ReiatsuDark.copy(alpha = 0.6f),
+                                        BleachTybwTokens.ReiatsuObsidian
+                                    ) else listOf(
+                                        Color.Transparent,
+                                        PrimaryDark.copy(alpha = 0.6f),
+                                        PrimaryDark
+                                    ),
+                                    startY = 0f
+                                )
+                            )
+                    )
+
+                    // Scrollable content
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 32.dp)
+                    ) {
+                        // Top back button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .onFocusChanged { isBackFocused = it.isFocused }
+                                    .focusGlow(isBackFocused, RoundedCornerShape(20.dp), focusedScale = 1.04f)
+                                    .glassSurface(RoundedCornerShape(20.dp), isFocused = isBackFocused)
+                                    .clickable { onBack() }
+                                    .focusable()
+                                    .padding(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        // Push details card down to show the panoramic banner behind it cleanly
+                        Spacer(modifier = Modifier.height(if (deviceType == DeviceType.TV) 140.dp else 80.dp))
+
+                        // Frosted Information Details Panel Card
+                        GlassCard(
+                            onClick = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            if (deviceType == DeviceType.TV) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        // TV left-side Cover image
+                                        AsyncImage(
+                                            model = currentAnime.coverImage,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .width(160.dp)
+                                                .height(230.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (isBleach) BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.15f),
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                        )
+
+                                        // TV right-side metadata Column
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            if (isBleach) {
+                                                BleachTributePill()
+                                                Image(
+                                                    painter = painterResource(id = R.drawable.bleach_tybw_logo_crimson),
+                                                    contentDescription = "Bleach: TYBW",
+                                                    modifier = Modifier.height(36.dp)
+                                                )
+                                            }
+
+                                            Text(
+                                                text = currentAnime.title,
+                                                color = if (isBleach) BleachTybwTokens.QuincyWhite else TextPrimary,
+                                                fontSize = 24.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = if (isBleach) BleachTybwTokens.BleachFontFamily else null,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            currentAnime.englishTitle?.let { engTitle ->
+                                                if (engTitle != currentAnime.title) {
+                                                    Text(
+                                                        text = engTitle,
+                                                        color = GlassTokens.TextMuted,
+                                                        fontSize = 14.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+
+                                            // Format, Score, Episodes, Studio metadata
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                currentAnime.averageScore?.let { score ->
+                                                    Text(
+                                                        "★ ${String.format("%.1f", score / 10.0)}",
+                                                        color = if (isBleach) BleachTybwTokens.BankaiGold else WarningAmber,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 13.sp
+                                                    )
+                                                }
+
+                                                if (currentAnime.episodes != null) {
+                                                    Text(
+                                                        "${currentAnime.episodes} Episodes",
+                                                        color = GlassTokens.TextMuted,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+
+                                                val detailsStr = listOfNotNull(
+                                                    currentAnime.season?.let { "$it ${currentAnime.seasonYear ?: ""}" },
+                                                    currentAnime.studioName
+                                                ).joinToString(" • ")
+
+                                                if (detailsStr.isNotEmpty()) {
+                                                    Text(
+                                                        detailsStr,
+                                                        color = GlassTokens.TextMuted,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+                                            }
+
+                                            // Genres tags row
+                                            if (currentAnime.genres.isNotEmpty()) {
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    currentAnime.genres.take(4).forEach { genre ->
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .glassSurface(RoundedCornerShape(6.dp), isFocused = false)
+                                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        ) {
+                                                            Text(genre, color = TextPrimary, fontSize = 11.sp)
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Description
+                                            val cleanDescription = remember(currentAnime.description) {
+                                                currentAnime.description?.replace(Regex("<[^>]*>"), "") ?: "No description available."
+                                            }
+                                            Text(
+                                                text = cleanDescription,
+                                                color = GlassTokens.TextMuted,
+                                                fontSize = 13.sp,
+                                                lineHeight = 18.sp,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            Spacer(Modifier.height(12.dp))
+
+                                            // Buttons Row
+                                            ActionButtonsRow(
+                                                episodes = episodes,
+                                                isBookmarked = isBookmarked,
+                                                onEpisodeClick = onEpisodeClick,
+                                                watchlistStore = watchlistStore,
+                                                currentAnime = currentAnime,
+                                                coroutineScope = coroutineScope,
+                                                onLeaveFeedback = { showFeedbackDialog = true },
+                                                watchHistoryEntry = watchHistoryEntry,
+                                                isBleach = isBleach
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Phone stacked layout with overlapping style
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    if (isBleach) {
+                                        BleachTributePill()
+                                        Spacer(Modifier.height(8.dp))
+                                        Image(
+                                            painter = painterResource(id = R.drawable.bleach_tybw_logo_crimson),
+                                            contentDescription = "Bleach: TYBW",
+                                            modifier = Modifier.height(30.dp)
+                                        )
+                                        Spacer(Modifier.height(10.dp))
+                                    }
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        // Phone Cover image
+                                        AsyncImage(
+                                            model = currentAnime.coverImage,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .width(90.dp)
+                                                .height(130.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .border(
+                                                    1.dp,
+                                                    if (isBleach) BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                        )
+
+                                        // Phone title / stats Column
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = currentAnime.title,
+                                                color = if (isBleach) BleachTybwTokens.QuincyWhite else TextPrimary,
+                                                fontSize = if (isBleach) 18.sp else 20.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = if (isBleach) BleachTybwTokens.BleachFontFamily else null,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            currentAnime.englishTitle?.let { engTitle ->
+                                                if (engTitle != currentAnime.title) {
+                                                    Spacer(Modifier.height(2.dp))
+                                                    Text(
+                                                        text = engTitle,
+                                                        color = GlassTokens.TextMuted,
+                                                        fontSize = 13.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(Modifier.height(8.dp))
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                currentAnime.averageScore?.let { score ->
+                                                    Text(
+                                                        "★ ${String.format("%.1f", score / 10.0)}",
+                                                        color = if (isBleach) BleachTybwTokens.BankaiGold else WarningAmber,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+
+                                                if (currentAnime.episodes != null) {
+                                                    Text(
+                                                        "${currentAnime.episodes} eps",
+                                                        color = GlassTokens.TextMuted,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+
+                                                if (currentAnime.studioName != null) {
+                                                    Text(
+                                                        currentAnime.studioName,
+                                                        color = GlassTokens.TextMuted,
+                                                        fontSize = 12.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(Modifier.height(8.dp))
+
+                                            // Genres row for phone
+                                            if (currentAnime.genres.isNotEmpty()) {
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    currentAnime.genres.take(3).forEach { genre ->
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .glassSurface(RoundedCornerShape(4.dp), isFocused = false)
+                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        ) {
+                                                            Text(genre, color = TextPrimary, fontSize = 9.sp)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(16.dp))
+
+                                    // Description
+                                    val cleanDescription = remember(currentAnime.description) {
+                                        currentAnime.description?.replace(Regex("<[^>]*>"), "") ?: "No description available."
+                                    }
+                                    Text(
+                                        text = cleanDescription,
+                                        color = GlassTokens.TextMuted,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
+                                        maxLines = 5,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(Modifier.height(16.dp))
+
+                                    // Buttons Row
+                                    ActionButtonsRow(
+                                        episodes = episodes,
+                                        isBookmarked = isBookmarked,
+                                        onEpisodeClick = onEpisodeClick,
+                                        watchlistStore = watchlistStore,
+                                        currentAnime = currentAnime,
+                                        coroutineScope = coroutineScope,
+                                        onLeaveFeedback = { showFeedbackDialog = true },
+                                        watchHistoryEntry = watchHistoryEntry,
+                                        isBleach = isBleach
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(28.dp))
+
+                        // Episodes Section
+                        Text(
+                            text = "🎬 Episodes",
+                            color = TextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp)
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Episode pagination ranges
+                        if (episodeChunks.size > 1) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp)
+                            ) {
+                                itemsIndexed(episodeChunks) { index, chunk ->
+                                    val start = chunk.first().number
+                                    val end = chunk.last().number
+                                    val label = if (start == end) "$start" else "$start - $end"
+                                    val isSelected = selectedChunkIndex == index
+                                    var isFocused by remember { mutableStateOf(false) }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .onFocusChanged { isFocused = it.isFocused }
+                                            .focusGlow(isFocused, RoundedCornerShape(12.dp), focusedScale = 1.04f)
+                                            .glassSurface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                isFocused = isFocused || isSelected
+                                            )
+                                            .clickable { selectedChunkIndex = index }
+                                            .focusable()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (isSelected || isFocused) GlassTokens.GlowCyan else TextSecondary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (currentEpisodes.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("No episodes found.", color = GlassTokens.TextMuted, fontSize = 14.sp)
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                currentEpisodes.forEach { episode ->
+                                    RedesignEpisodeCard(
+                                        episode = episode,
+                                        onClick = { onEpisodeClick(episode.number) },
+                                        isBleach = isBleach
+                                    )
+                                }
+                            }
+                        }
+
+                        // Similar Recommendations Section
+                        if (currentAnime.recommendations.isNotEmpty()) {
+                            Spacer(Modifier.height(32.dp))
+                            Text(
+                                text = "🌟 Similar Recommendations",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(horizontal = if (deviceType == DeviceType.TV) 48.dp else 16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                            ) {
+                                items(currentAnime.recommendations) { recAnime ->
+                                    var isFocused by remember { mutableStateOf(false) }
+                                    Box(
+                                        modifier = Modifier
+                                            .width(if (deviceType == DeviceType.TV) 140.dp else 120.dp)
+                                            .onFocusChanged { isFocused = it.isFocused }
+                                            .focusGlow(isFocused, RoundedCornerShape(12.dp))
+                                            .glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+                                            .clickable { onAnimeClick(recAnime.id) }
+                                            .focusable()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(0.7f)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                            ) {
+                                                AsyncImage(
+                                                    model = recAnime.coverImage,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                                recAnime.averageScore?.let { score ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.TopEnd)
+                                                            .padding(6.dp)
+                                                            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                                            .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "★ ${String.format("%.1f", score / 10.0)}",
+                                                            color = GlassTokens.GlowCyan,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                text = recAnime.title,
+                                                color = if (isFocused) GlassTokens.GlowCyan else TextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    }
+                    if (isBlurry) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.85f))
+                                .clickable(enabled = true, onClick = {})
+                        )
+                        if (state is DetailUiState.Ambiguous) {
+                            RedesignAmbiguousSelectionDialog(
+                                candidates = state.candidates,
+                                onSelect = { candidate ->
+                                    viewModel.confirmMapping(currentAnime, candidate)
+                                },
+                                onDismiss = {
+                                    viewModel.uiState.value = DetailUiState.NotFound(currentAnime)
+                                }
+                            )
+                        }
+                        if (showFeedbackDialog) {
+                            FeedbackInputDialog(
+                                initialFeedback = userFeedbackText ?: "",
+                                onDismiss = { showFeedbackDialog = false },
+                                onSubmit = { text ->
+                                    coroutineScope.launch {
+                                        userFeedbackStore.saveFeedback(currentAnime, text)
+                                    }
+                                    showFeedbackDialog = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+}
+
+@Composable
+private fun ActionButtonsRow(
+    episodes: List<Episode>,
+    isBookmarked: Boolean,
+    onEpisodeClick: (Int) -> Unit,
+    watchlistStore: WatchlistStore,
+    currentAnime: Anime,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onLeaveFeedback: () -> Unit,
+    watchHistoryEntry: com.example.aniflow.data.model.WatchHistoryEntry?,
+    isBleach: Boolean = false
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val targetEp = watchHistoryEntry?.episodeNumber ?: if (episodes.isNotEmpty()) episodes.first().number else 1
+        val buttonLabel = if (watchHistoryEntry != null) "Continue Ep ${watchHistoryEntry.episodeNumber}" else "Play Episode 1"
+
+        if (isBleach) {
+            BleachBankaiButton(
+                text = "卍解 BANKAI • $buttonLabel",
+                onClick = { onEpisodeClick(targetEp) },
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            var isPlayFocused by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .onFocusChanged { isPlayFocused = it.isFocused }
+                    .focusGlow(isPlayFocused, RoundedCornerShape(24.dp), focusedScale = 1.02f)
+                    .glassSurface(RoundedCornerShape(24.dp), isFocused = isPlayFocused)
+                    .clickable {
+                        onEpisodeClick(targetEp)
+                    }
+                    .focusable(),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = buttonLabel,
+                        color = if (isPlayFocused) GlassTokens.GlowCyan else TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        var isFeedbackFocused by remember { mutableStateOf(false) }
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .onFocusChanged { isFeedbackFocused = it.isFocused }
+                .focusGlow(isFeedbackFocused, RoundedCornerShape(24.dp), focusedScale = 1.05f)
+                .glassSurface(RoundedCornerShape(24.dp), isFocused = isFeedbackFocused)
+                .clickable { onLeaveFeedback() }
+                .focusable(),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = "Feedback",
+                tint = if (isFeedbackFocused) {
+                    if (isBleach) BleachTybwTokens.BankaiGold else GlassTokens.GlowCyan
+                } else {
+                    TextPrimary
+                },
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        var isFavFocused by remember { mutableStateOf(false) }
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .onFocusChanged { isFavFocused = it.isFocused }
+                .focusGlow(isFavFocused, RoundedCornerShape(24.dp), focusedScale = 1.05f)
+                .glassSurface(RoundedCornerShape(24.dp), isFocused = isFavFocused)
+                .clickable {
+                    coroutineScope.launch {
+                        if (isBookmarked) {
+                            watchlistStore.removeFromWatchlist(currentAnime.id)
+                        } else {
+                            watchlistStore.addToWatchlist(currentAnime)
+                        }
+                    }
+                }
+                .focusable(),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = "Watchlist",
+                tint = if (isBookmarked) {
+                    if (isBleach) BleachTybwTokens.ReiatsuBlood else GlassTokens.GlowRose
+                } else {
+                    TextPrimary
+                },
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun RedesignEpisodeCard(
+    episode: Episode,
+    onClick: () -> Unit,
+    isBleach: Boolean = false
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusGlow(
+                isFocused = isFocused,
+                shape = RoundedCornerShape(12.dp),
+                focusedScale = 1.03f,
+                glowColors = if (isBleach) listOf(
+                    BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.65f),
+                    BleachTybwTokens.BankaiGold.copy(alpha = 0.45f),
+                    BleachTybwTokens.ReiatsuBlood.copy(alpha = 0.25f),
+                    Color.Transparent
+                ) else null
+            )
+            .let { mod ->
+                if (isBleach) {
+                    mod
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isFocused) BleachTybwTokens.ReiatsuDark.copy(alpha = 0.98f) else BleachTybwTokens.ReiatsuObsidian.copy(alpha = 0.85f)
+                        )
+                        .border(
+                            1.dp,
+                            if (isFocused) BleachTybwTokens.BankaiGold else BleachTybwTokens.ReiatsuCrimson.copy(alpha = 0.35f),
+                            RoundedCornerShape(12.dp)
+                        )
+                } else {
+                    mod.glassSurface(RoundedCornerShape(12.dp), isFocused = isFocused)
+                }
+            }
+            .clickable { onClick() }
+            .focusable()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 80.dp, height = 48.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (isBleach) BleachTybwTokens.ReiatsuDark else Color.White.copy(alpha = 0.05f))
+                    .border(
+                        1.dp,
+                        if (isBleach) BleachTybwTokens.ReiatsuBlood.copy(alpha = 0.6f) else Color.Transparent,
+                        RoundedCornerShape(6.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "${episode.number}",
+                    color = if (isBleach) BleachTybwTokens.ReiatsuBlood else GlassTokens.GlowCyan,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = if (isBleach) BleachTybwTokens.BleachFontFamily else null
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (isBleach) {
+                        Image(
+                            painter = painterResource(id = R.drawable.bleach_shinigami_skull_crimson),
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Text(
+                        text = episode.name,
+                        color = if (isBleach && isFocused) BleachTybwTokens.BankaiGold else TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = if (isBleach) {
+                    if (isFocused) BleachTybwTokens.BankaiGold else BleachTybwTokens.ReiatsuBlood
+                } else {
+                    if (isFocused) GlassTokens.GlowCyan else GlassTokens.TextMuted.copy(alpha = 0.6f)
+                },
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        if (isBleach && isFocused) {
+            BleachLightingBorderGlow(
+                modifier = Modifier.matchParentSize(),
+                shape = RoundedCornerShape(12.dp),
+                strokeWidth = 2.dp
+            )
+        }
+    }
+}
+
+@Composable
+fun RedesignAmbiguousSelectionDialog(
+    candidates: List<com.example.aniflow.data.model.ProviderSearchResult>,
+    onSelect: (com.example.aniflow.data.model.ProviderSearchResult) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .width(420.dp)
+                .wrapContentHeight()
+                .padding(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF0F0E17).copy(alpha = 0.98f)
+            ),
+            shape = RoundedCornerShape(24.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Text(
+                    text = "Multiple Matches Found",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Please choose the correct title below:",
+                    color = GlassTokens.TextMuted,
+                    fontSize = 13.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.heightIn(max = 300.dp)
+                ) {
+                    items(candidates) { candidate ->
+                        var isItemFocused by remember { mutableStateOf(false) }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { isItemFocused = it.isFocused }
+                                .focusGlow(isItemFocused, RoundedCornerShape(12.dp), focusedScale = 1.02f)
+                                .glassSurface(RoundedCornerShape(12.dp), isFocused = isItemFocused)
+                                .clickable { onSelect(candidate) }
+                                .focusable()
+                                .padding(16.dp)
+                        ) {
+                            Text(candidate.title, color = TextPrimary, fontSize = 14.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    var isCancelFocused by remember { mutableStateOf(false) }
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .onFocusChanged { isCancelFocused = it.isFocused }
+                            .focusable()
+                    ) {
+                        Text(
+                            "Cancel",
+                            color = if (isCancelFocused) GlassTokens.GlowCyan else GlassTokens.TextMuted,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FeedbackInputDialog(
+    initialFeedback: String,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initialFeedback) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF0F0E17).copy(alpha = 0.98f)
+            ),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .width(400.dp)
+                .padding(24.dp)
+                .border(1.dp, GlassTokens.GlowCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Why do you think this anime is good?",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp),
+                    placeholder = { Text("Write your reason...", color = GlassTokens.TextMuted, fontSize = 14.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .focusRequester(focusRequester),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = GlassTokens.GlowCyan,
+                        unfocusedBorderColor = GlassTokens.TextMuted.copy(alpha = 0.5f),
+                        cursorColor = GlassTokens.GlowCyan
+                    )
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    var isCancelFocused by remember { mutableStateOf(false) }
+                    var isSubmitFocused by remember { mutableStateOf(false) }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .onFocusChanged { isCancelFocused = it.isFocused }
+                            .focusGlow(isCancelFocused, RoundedCornerShape(20.dp), focusedScale = 1.03f)
+                            .glassSurface(RoundedCornerShape(20.dp), isFocused = isCancelFocused)
+                            .clickable { onDismiss() }
+                            .focusable(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Cancel", color = if (isCancelFocused) GlassTokens.GlowCyan else TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .onFocusChanged { isSubmitFocused = it.isFocused }
+                            .focusGlow(isSubmitFocused, RoundedCornerShape(20.dp), focusedScale = 1.03f)
+                            .glassSurface(RoundedCornerShape(20.dp), isFocused = isSubmitFocused)
+                            .clickable { onSubmit(text) }
+                            .focusable(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Submit", color = if (isSubmitFocused) GlassTokens.GlowCyan else GlassTokens.GlowCyan.copy(alpha = 0.7f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+

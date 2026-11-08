@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.AniFlow" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <!-- Warm black from the first frame, so the launch stamp starts on the same colour. -->
+        <item name="android:windowBackground">@color/aniflow_night</item>
+    </style>
+</resources>
