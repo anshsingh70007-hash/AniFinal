@@ -177,7 +177,8 @@ private var launchShown = false
 
 private const val PREFS = "aniflow_brand"
 private const val KEY_INTRO_SEEN = "introSeen"
-private const val KEY_FIRST_RUN_DONE = "firstRunDone"
+// v2: early 1.9 test builds streamed the clip from a host that never existed and could mark v1 done.
+private const val KEY_FIRST_RUN_DONE = "firstRunDone_v2"
 
 private enum class LaunchStage { Intro, FirstRun, Done }
 
@@ -186,7 +187,7 @@ private enum class LaunchStage { Intro, FirstRun, Done }
  *
  *  - Every launch: the ED-style logo intro (~3.3 s first time, ~1.5 s after that; any key or tap
  *    skips). Phones and returning TV users iris out of the play counter into the app.
- *  - First launch after a fresh install (TV or phone): the intro hard-cuts to black, then [FirstRun]
+ *  - First launch on a device (TV or phone), until the welcome is finished: the intro hard-cuts to black, then [FirstRun]
  *    plays the welcome clip
  *    and offers sign-up / log-in / continue.
  *
@@ -197,13 +198,10 @@ private enum class LaunchStage { Intro, FirstRun, Done }
 fun AniFlowLaunch(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
-    // Only for a fresh install, so people updating the app don't suddenly get the welcome clip.
-    val firstRunWanted = remember {
-        !launchShown && !prefs.getBoolean(KEY_FIRST_RUN_DONE, false) && runCatching {
-            val info = context.packageManager.getPackageInfo(context.packageName, 0)
-            info.firstInstallTime == info.lastUpdateTime
-        }.getOrDefault(false)
-    }
+    // Once per device, until the welcome is finished. No "fresh install only" check: this package's
+    // first public build was 1.9.0, so nobody on it has had the welcome, and 1.9.0 -> 1.9.x arrives
+    // as an update (that check hid the welcome and the account choice from exactly those people).
+    val firstRunWanted = remember { !launchShown && !prefs.getBoolean(KEY_FIRST_RUN_DONE, false) }
     val fast = remember { prefs.getBoolean(KEY_INTRO_SEEN, false) }
     var stage by remember { mutableStateOf(if (launchShown) LaunchStage.Done else LaunchStage.Intro) }
     val firstRun = remember { if (firstRunWanted) FirstRunState(isTv = DeviceDetector.detect(context) == DeviceType.TV) else null }

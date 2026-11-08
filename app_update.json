@@ -1,9 +1,9 @@
 {
-  "versionCode": 56,
-  "versionName": "1.9.1",
+  "versionCode": 57,
+  "versionName": "1.9.2",
   "maintenance": false,
-  "updateUrl": "https://github.com/anshsingh70007-hash/AniFinal/releases/download/v1.9.1/AniFlow-1.9.1-56.apk",
-  "updateNotes": "The new AniFlow (1.9.1) is a separate app and can't update this one in place.\n\nGet it from github.com/anshsingh70007-hash/AniFinal/releases, install it, then uninstall this old version. Your watchlist and history stay in the old app; they don't carry over.\n\nFrom 1.9.0 on, updates install straight from the app.",
+  "updateUrl": "https://github.com/anshsingh70007-hash/AniFinal/releases/download/v1.9.2/AniFlow-1.9.2-57.apk",
+  "updateNotes": "The new AniFlow (1.9.2) is a separate app and can't update this one in place.\n\nGet it from github.com/anshsingh70007-hash/AniFinal/releases, install it, then uninstall this old version. Your watchlist and history stay in the old app; they don't carry over.\n\nFrom 1.9.0 on, updates install straight from the app.",
   "forceUpdate": false,
   "silentUpdate": false
 }
