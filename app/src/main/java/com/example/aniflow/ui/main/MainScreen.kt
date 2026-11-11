@@ -77,6 +77,8 @@ import com.example.aniflow.data.WatchHistoryStore
 import com.example.aniflow.data.WatchlistStore
 import com.example.aniflow.data.repository.AnimeRepository
 import com.example.aniflow.theme.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.aniflow.data.model.finished
 import com.example.aniflow.ui.phone.*
 import com.example.aniflow.ui.tv.*
 import com.example.aniflow.ui.tv.components.TvSideNavRail
@@ -229,6 +231,8 @@ fun MainScreen(
                                 latestAired = latestAired,
                                 topPicks = topPicks,
                                 becauseYouWatched = becauseYouWatched,
+                                airing = airingToday,
+                                userFeedbackList = userFeedbackList,
                                 shelves = shelves,
                                 trailersEnabled = heroTrailers,
                                 isLoading = isLoading,
@@ -284,6 +288,87 @@ fun MainScreen(
                             }
                         }
                     }
+            } else if (!isRedesign) {
+                // The phone frame: top bar + floating capsule tab bar + resume bar (ui/phone/PhoneShell).
+                var segment by rememberSaveable { mutableIntStateOf(SEGMENT_FOR_YOU) }
+                var searchFocus by rememberSaveable { mutableIntStateOf(0) }
+                val resume = remember(history) {
+                    history.maxByOrNull { it.lastWatchedTime }?.takeIf { !it.finished }
+                }
+                PhoneShell(
+                    currentTab = currentTab,
+                    onSelectTab = { viewModel.setTab(it) },
+                    segment = segment,
+                    onSegment = { segment = it },
+                    onSearch = { viewModel.setTab(1); searchFocus++ },
+                    resume = resume,
+                    onResume = { onItemClick(Player(it.animeId, it.episodeNumber)) },
+                ) { tab, inset ->
+                    CompositionLocalProvider(LocalPhoneBottomInset provides inset) {
+                        when (tab) {
+                            0 -> if (isLoading) {
+                                Box(Modifier.fillMaxSize()) {
+                                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryAccent)
+                                }
+                            } else PhoneHomeScreen(
+                                onOpenSchedule = { viewModel.setTab(4) },
+                                trending = trending,
+                                popular = popular,
+                                seasonal = seasonal,
+                                airing = airingToday,
+                                topRated = topRated,
+                                upcoming = upcoming,
+                                recentlyUpdated = recentlyUpdated,
+                                actionAnime = actionAnime,
+                                romanceAnime = romanceAnime,
+                                history = history,
+                                latestAired = latestAired,
+                                topPicks = topPicks,
+                                becauseYouWatched = becauseYouWatched,
+                                shelves = shelves,
+                                userFeedbackList = userFeedbackList,
+                                onAnimeClick = { onItemClick(Detail(it.id)) },
+                                onHistoryClick = { onItemClick(Detail(it.animeId)) },
+                                onPlay = { id, ep -> onItemClick(Player(id, ep)) },
+                                settingsStore = sStore,
+                                segment = segment,
+                                bottomInset = inset,
+                            )
+                            1 -> PhoneBrowseScreen(
+                                query = searchQuery,
+                                onQueryChange = { viewModel.onSearchQueryChanged(it) },
+                                selectedGenre = selectedGenre,
+                                onGenreSelect = { viewModel.onGenreSelected(it) },
+                                results = searchResults,
+                                hasNextPage = hasNextPage,
+                                isSearchLoading = isSearchLoading,
+                                onLoadMore = { viewModel.loadNextSearchPage() },
+                                onAnimeClick = { viewModel.rememberSearch(); onItemClick(Detail(it.id)) },
+                                recent = recentSearches,
+                                onClearRecent = { viewModel.clearRecentSearches() },
+                                focusSearch = searchFocus,
+                            )
+                            2 -> PhoneLibraryScreen(
+                                watchlist = watchlist,
+                                onAnimeClick = { onItemClick(Detail(it.id)) },
+                                history = history,
+                                onHistoryClick = { onItemClick(Detail(it.animeId)) }
+                            )
+                            3 -> PhoneSettingsScreen(
+                                watchlistStore = wStore,
+                                watchHistoryStore = hStore,
+                                settingsStore = sStore,
+                                repository = repository
+                            )
+                            4 -> PhoneScheduleScreen(
+                                schedule = weekSchedule,
+                                failed = weekScheduleFailed,
+                                onRetry = { viewModel.retryWeekSchedule() },
+                                onOpenDetail = { onItemClick(Detail(it)) }
+                            )
+                        }
+                    }
+                }
             } else {
                 Scaffold(
                     bottomBar = {

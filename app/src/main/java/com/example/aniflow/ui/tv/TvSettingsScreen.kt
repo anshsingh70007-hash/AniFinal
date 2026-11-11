@@ -203,6 +203,7 @@ private fun PlaybackPanel(c: SettingsController, back: FocusRequester) {
     )
     ToggleRow("Autoplay next episode", "A 10-second Up Next countdown as the credits roll.", c.autoplay, back, c::toggleAutoplay)
     ToggleRow("Skip intros and credits", "Jumps past openings and endings by itself, with a heads-up first.", c.autoSkip, back, c::toggleAutoSkip)
+    ToggleRow("Anime colour", "Richer colour tuned for animation. Off lets your TV's own picture engine upscale and sharpen the video (crispest on 4K TVs).", c.animeColor, back, c::toggleAnimeColor)
 }
 
 @Composable

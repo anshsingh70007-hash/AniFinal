@@ -1002,7 +1002,8 @@ class BackupAnimeApi(private val client: HttpClient) {
             seasonYear = seasonYear,
             nextAiringEpisode = nextEp,
             nextAiringAt = nextAt,
-            trailerUrl = trailerUrl
+            trailerUrl = trailerUrl,
+            idMal = obj["idMal"]?.jsonPrimitive?.intOrNull
         )
     }
 

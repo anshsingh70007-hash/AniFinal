@@ -9,9 +9,13 @@ import android.graphics.Bitmap
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
+import android.widget.FrameLayout
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JsPromptResult
@@ -24,6 +28,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -93,7 +98,9 @@ private const val MAX_HEALS = 3
 private const val AUTO_HIDE_MS = 5_000L
 private const val STILL_WATCHING_AFTER = 3
 private const val STATUS_CONNECTING = "Connecting to server…"
-private val EPISODE_IN_URL = Regex("/stream/ani/\\d+/(\\d+)/")
+private val EPISODE_IN_URL = Regex("/stream/(?:ani|mal)/\\d+/(\\d+)/")
+/** Present when the URL's episode is offset (a Part 2 played as episodes 13+ of Part 1): the real number. */
+private val EPISODE_IN_FRAGMENT = Regex("#ep(\\d+)$")
 
 private const val PAUSE_ALL_MEDIA =
     "document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();}catch(e){}});"
@@ -139,6 +146,32 @@ private fun jw(body: String) =
         "var v=document.querySelector('video');try{$body}catch(e){}})()"
 
 // play()/pause() are guarded by state: on JW7 a bare call toggles.
+/**
+ * Anime colour grade (AniFlow_Video_Enhancement_Research.md): gentle on purpose, since flat fills band
+ * when pushed. Chromium folds these into one GPU colour matrix. Re-applied each tick because the
+ * page can swap its <video>.
+ */
+private const val GRADE = "contrast(1.06) saturate(1.12) brightness(1.01)"
+private fun jsGrade(on: Boolean) =
+    "(function(){var v=document.querySelector('video');if(v&&v.style.filter!=='${if (on) GRADE else ""}')v.style.filter='${if (on) GRADE else ""}';})()"
+
+/**
+ * TV: put the player in HTML5 fullscreen. Only then does Chromium hand the video to a native
+ * surface (a hardware video plane), which the TV's own picture engine upscales and sharpens to 4K,
+ * as it did for the old native player. Fullscreen needs a real gesture: this arms a one-shot
+ * listener, then [WebHolder.tap] delivers a genuine touch, which the listener swallows so the
+ * page never sees it as play/pause.
+ */
+private const val JS_ARM_FULLSCREEN = "(function(){if(window.__aniFs)return;window.__aniFs=1;var done=false,until=0;" +
+    "var evs=['pointerdown','pointerup','mousedown','mouseup','touchstart','touchend','click'];" +
+    "function off(){evs.forEach(function(n){window.removeEventListener(n,h,true);});window.__aniFs=0;}" +
+    "function h(e){if(!done){done=true;until=Date.now()+700;try{var j=(typeof jwplayer==='function')?jwplayer():null;" +
+    "var el=(j&&j.getContainer&&j.getContainer())||document.documentElement;" +
+    "var p=el.requestFullscreen?el.requestFullscreen():(el.webkitRequestFullscreen?el.webkitRequestFullscreen():null);" +
+    "if(p&&p.catch)p.catch(function(){});}catch(x){}}" +
+    "if(Date.now()<=until){e.stopImmediatePropagation();e.preventDefault();}else off();}" +
+    "evs.forEach(function(n){window.addEventListener(n,h,{capture:true,passive:false});});setTimeout(off,3000);})()"
+
 private val JS_PLAY = jw("if(j){var s=j.getState();if(s!=='playing'&&s!=='buffering')j.play();}else if(v){v.play();}")
 private val JS_PAUSE = jw("if(j){var s=j.getState();if(s==='playing'||s==='buffering')j.pause();}else if(v){v.pause();}")
 
@@ -221,12 +254,78 @@ private class EpisodeSession {
     var endHandled = false
     var userPaused = false
     var kicked = false
+    var fullscreenTries = 0
+    var lastFullscreenTry = 0L
     fun markProgress(t: Long) { lastT = t; lastAdvanceAt = SystemClock.uptimeMillis() }
 }
 
 /** The page's WebView plus what its clients reported. A dead (renderer-crashed) view is never touched again. */
-private class WebHolder(val view: WebView) {
+private class WebHolder(val view: WebView, val root: FrameLayout) {
     var dead = false
+    /** The view Chromium hands over in HTML5 fullscreen (holds the native video surface). */
+    var custom: View? = null
+    var customCallback: WebChromeClient.CustomViewCallback? = null
+    val inFullscreen: Boolean get() = custom != null
+
+    fun showCustom(v: View, callback: WebChromeClient.CustomViewCallback?) {
+        removeCustom()
+        // Compose owns every key: the fullscreen view must never take focus from it.
+        v.isFocusable = false
+        (v as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        root.addView(v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        custom = v
+        customCallback = callback
+        // Android 13+: WebView registers its own back callback while fullscreen, above Compose's
+        // BackHandler, so BACK would only leave fullscreen. Ours, registered after it at the same
+        // priority, wins and hands BACK to the player as usual.
+        if (Build.VERSION.SDK_INT >= 33) root.post { if (custom === v) claimBack() }
+    }
+
+    private var backCallback: Any? = null
+    private var backDispatcher: Any? = null
+
+    @androidx.annotation.RequiresApi(33)
+    private fun claimBack() {
+        releaseBack()
+        val dispatcher = root.findOnBackInvokedDispatcher() ?: return
+        val cb = android.window.OnBackInvokedCallback {
+            generateSequence(root.context) { (it as? ContextWrapper)?.baseContext }
+                .filterIsInstance<ComponentActivity>().firstOrNull()
+                ?.onBackPressedDispatcher?.onBackPressed()
+        }
+        runCatching { dispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY, cb) }
+            .onSuccess { backCallback = cb; backDispatcher = dispatcher }
+    }
+
+    private fun releaseBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val cb = backCallback as? android.window.OnBackInvokedCallback ?: return
+        val dispatcher = backDispatcher as? android.window.OnBackInvokedDispatcher
+        backCallback = null
+        backDispatcher = null
+        runCatching { dispatcher?.unregisterOnBackInvokedCallback(cb) }
+    }
+
+    fun removeCustom() {
+        releaseBack()
+        custom?.let { runCatching { root.removeView(it) } }
+        custom = null
+        customCallback = null
+    }
+
+    /** A real touch in the middle of the page: the user gesture fullscreen requires. */
+    fun tap() {
+        if (dead || view.width == 0) return
+        val x = view.width / 2f
+        val y = view.height / 2f
+        val t = SystemClock.uptimeMillis()
+        for ((action, at) in listOf(MotionEvent.ACTION_DOWN to t, MotionEvent.ACTION_UP to t + 40)) {
+            val e = MotionEvent.obtain(t, at, action, x, y, 0)
+            e.source = InputDevice.SOURCE_TOUCHSCREEN
+            runCatching { view.dispatchTouchEvent(e) }
+            e.recycle()
+        }
+    }
     var mainFrameError = false
     var httpStatus = 0
 
@@ -257,10 +356,12 @@ private class WebHolder(val view: WebView) {
 
     fun destroy() {
         view.keepScreenOn = false
+        runCatching { customCallback?.onCustomViewHidden() }
+        removeCustom()
         run(MUTE_AND_PAUSE_ALL_MEDIA)
         runCatching {
             if (!dead) view.onPause()
-            (view.parent as? ViewGroup)?.removeView(view)
+            (root.parent as? ViewGroup)?.removeView(root)
             if (!dead) { view.stopLoading(); view.loadUrl("about:blank") }
             view.destroy()
         }
@@ -271,8 +372,10 @@ private class WebHolder(val view: WebView) {
 @SuppressLint("SetJavaScriptEnabled")
 private fun buildHolder(context: Context, onRendererGone: () -> Unit): WebHolder {
     val view = WebView(context)
-    val holder = WebHolder(view)
-    view.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    val root = FrameLayout(context)
+    val holder = WebHolder(view, root)
+    root.setBackgroundColor(android.graphics.Color.BLACK)
+    root.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     view.setBackgroundColor(android.graphics.Color.BLACK)
     // The page is only a video surface: Compose owns every key and touch.
     view.isFocusable = false
@@ -294,6 +397,11 @@ private fun buildHolder(context: Context, onRendererGone: () -> Unit): WebHolder
         override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean { result?.cancel(); return true }
         override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?): Boolean { result?.cancel(); return true }
         override fun onPermissionRequest(request: PermissionRequest?) { request?.deny() }
+        override fun onShowCustomView(v: View?, callback: CustomViewCallback?) {
+            if (v == null || holder.dead) { callback?.onCustomViewHidden(); return }
+            holder.showCustom(v, callback)
+        }
+        override fun onHideCustomView() { holder.removeCustom() }
     }
     view.webViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -366,10 +474,15 @@ fun EmbedPlayer(
     val audio by viewModel.selectedAudioType.collectAsState()
     val autoNext by viewModel.autoPlayNextEpisode.collectAsState()
     val isTv = deviceType == DeviceType.TV
+    val animeColorDefault = remember { com.example.aniflow.ui.settings.animeColorDefault(context) }
+    val animeColor = remember { com.example.aniflow.data.SettingsStore(context.applicationContext).animeColor(animeColorDefault) }
+        .collectAsState(initial = animeColorDefault)
 
     // The URL names the episode; trust it over the index so progress is never saved against an
     // episode other than the one playing.
-    val urlEpisode = remember(url) { EPISODE_IN_URL.find(url)?.groupValues?.get(1)?.toIntOrNull() }
+    val urlEpisode = remember(url) {
+        (EPISODE_IN_FRAGMENT.find(url) ?: EPISODE_IN_URL.find(url))?.groupValues?.get(1)?.toIntOrNull()
+    }
     val epIndex = episodes.indexOfFirst { it.number == urlEpisode }.takeIf { it >= 0 } ?: index
     val episode = episodes.getOrNull(epIndex)
     val nextEpisode = episodes.getOrNull(epIndex + 1)
@@ -534,7 +647,7 @@ fun EmbedPlayer(
         phase = Phase.Loading(status)
         reloadNonce++
     }
-    fun unavailable() {
+    fun notFound() {
         if (audio == AudioType.DUB) {
             // Self-heal: most "missing" episodes are a dub that isn't out yet.
             toastText = "No dub for this episode yet. Switched to subtitles."
@@ -546,6 +659,11 @@ fun EmbedPlayer(
                 "The server doesn't have ${episodeLabel(episode).ifEmpty { "this episode" }} right now. Try again later or try the HD player."
             )
         }
+    }
+    fun unavailable() {
+        // Not where we looked: MegaPlay may file it under the MAL id or the prequel. Same episode, same audio.
+        if (viewModel.embedFallback(onNothing = ::notFound)) return
+        notFound()
     }
     fun adjustLevel(side: Int, delta: Float) {
         val activity = context.findActivity() ?: return
@@ -686,6 +804,19 @@ fun EmbedPlayer(
 
             // Autoplay kick: some WebViews ignore autoplay until poked.
             if (st == "playing") s.kicked = true
+
+            // Picture: the colour grade, or (TV, grade off) the TV's own engine via a native surface.
+            val grade = animeColor.value
+            h.run(jsGrade(grade))
+            if (isTv && !grade && st == "playing" && !h.inFullscreen && s.fullscreenTries < 2 &&
+                now - s.lastFullscreenTry > 4_000 && now - readyAt > 1_500
+            ) {
+                s.fullscreenTries++
+                s.lastFullscreenTry = now
+                h.run(JS_ARM_FULLSCREEN)
+                delay(80)
+                h.tap()
+            }
             else if (!s.kicked && !s.userPaused && (st == "paused" || st == "idle") && now - readyAt < 10_000) h.run(JS_PLAY)
 
             // Stall watchdog: only time spent trying to play counts.
@@ -913,7 +1044,7 @@ fun EmbedPlayer(
             // key(holder): a rebuilt WebView needs a new AndroidView; the factory runs once per node.
             key(holder) {
                 AndroidView(
-                    factory = { holder.view.also { (it.parent as? ViewGroup)?.removeView(it) } },
+                    factory = { holder.root.also { (it.parent as? ViewGroup)?.removeView(it) } },
                     modifier = Modifier.fillMaxSize()
                 )
             }

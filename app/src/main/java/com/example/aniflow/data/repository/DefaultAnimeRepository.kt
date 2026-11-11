@@ -18,6 +18,8 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     private val client = NetworkModule.client
     private val aniListApi = AniListApi(client)
 
+    override suspend fun getSamePrequel(id: Int): Pair<Int, Int>? = aniListApi.getSamePrequel(id)
+
     override suspend fun getFranchise(id: Int): List<FranchiseEntry> = try {
         aniListApi.getFranchise(id)
     } catch (e: kotlinx.coroutines.CancellationException) {
@@ -128,14 +130,17 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             return@flow
         }
         val diskFeed = feedDiskCache.loadCache()
-        if (diskFeed != null && diskFeed.trending.isNotEmpty() && cached == null) {
-            emitAndCache(diskFeed.trending)
+        val diskTrending = diskFeed?.trending.orEmpty().filter(::isCurrent)
+        if (diskTrending.size > 3 && cached == null) {
+            emitAndCache(diskTrending)
         }
         try {
-            // First try AniLight official /homepage trending to match anilight.live exactly
-            var list = try { backupAnimeApi.getAniLightHomepageTrending() } catch (e: Exception) { emptyList() }
-            if (list.isEmpty()) {
-                list = try { aniListApi.getTrending() } catch (e: Exception) { emptyList() }
+            // AniList's trending score is what its community watched and talked about over the last
+            // few days, across every site. Raw, it is full of evergreen titles (Naruto, Bleach 2004,
+            // Black Clover 2017): "Trending now" keeps only what is airing or came out lately.
+            var list = try { aniListApi.getTrending(perPage = 50).filter(::isCurrent).take(24) } catch (e: Exception) { emptyList() }
+            if (list.size < 6) {
+                list = try { backupAnimeApi.getAniLightHomepageTrending().filter(::isCurrent) } catch (e: Exception) { emptyList() }
             }
             if (list.isEmpty()) {
                 android.util.Log.i("DefaultAnimeRepository", "AniLight & AniList trending unavailable, trying backup API...")
@@ -147,11 +152,11 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
                 feedDiskCache.updateSection(trending = list)
                 emitAndCache(list)
             } else {
-                emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() } ?: getFallbackAnimeList())
+                emitAndCache(cached ?: diskTrending.takeIf { it.isNotEmpty() } ?: getFallbackAnimeList())
             }
         } catch (e: Exception) {
             android.util.Log.e("DefaultAnimeRepository", "Error getting trending", e)
-            emitAndCache(cached ?: diskFeed?.trending?.takeIf { it.isNotEmpty() } ?: getFallbackAnimeList())
+            emitAndCache(cached ?: diskTrending.takeIf { it.isNotEmpty() } ?: getFallbackAnimeList())
         }
     }.flowOn(Dispatchers.IO)
 
@@ -199,7 +204,9 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.seasonal))
         }
         try {
-            var list = aniLightSection("seasonal").ifEmpty { try { aniListApi.getSeasonal() } catch (e: Exception) { emptyList() } }
+            // "Airing this season" never lists shows that haven't started.
+            var list = aniLightSection("seasonal").filterNot(::notYetOut)
+                .ifEmpty { try { aniListApi.getSeasonal().filterNot(::notYetOut) } catch (e: Exception) { emptyList() } }
             if (list.isEmpty()) {
                 android.util.Log.i("DefaultAnimeRepository", "AniList seasonal unavailable, trying backup API...")
                 list = backupAnimeApi.getSeasonal()
@@ -299,21 +306,22 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     }.flowOn(Dispatchers.IO)
 
     override fun getRecentlyUpdated(): Flow<List<Anime>> = flow {
-        val diskFeed = feedDiskCache.loadCache()
-        if (diskFeed != null && diskFeed.recentlyUpdated.isNotEmpty()) {
-            emitAndCache(diskFeed.recentlyUpdated)
-        }
-        // anilight.live's own "recently added episodes" first (it is what the site shows), then the
-        // schedule's aired episodes it doesn't have. Seasonal titles are not "recently updated":
-        // with neither source, fall back to the last real list or nothing.
-        val site = aniLightSection("recentlyAddedEpisodes")
-        val data = refreshSchedule()
-        val merged = (site + data.second).distinctBy { it.id }.take(24)
-        if (site.isNotEmpty()) {
-            cacheAnimeList(site)
+        // Older versions cached anilight's catalogue backfill here (Squid Girl 2010…); show the
+        // disk copy only for what is still current.
+        val disk = feedDiskCache.loadCache()?.recentlyUpdated.orEmpty().filter(::isCurrent)
+        if (disk.isNotEmpty()) emitAndCache(disk)
+        // Episodes that went out in the last three days (AniList's airing schedule), newest first.
+        // anilight.live's "recentlyAddedEpisodes" is what it uploaded, which includes decades-old
+        // shows, so it is no longer a source. The week schedule fills in when AniList is down.
+        val aired = try { aniListApi.getFreshEpisodes() }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { emptyList() }
+        val merged = aired.ifEmpty { refreshSchedule().second }.distinctBy { it.id }.take(24)
+        if (merged.isNotEmpty()) {
+            cacheAnimeList(merged)
             feedDiskCache.updateSection(recentlyUpdated = merged)
         }
-        emitAndCache(merged.ifEmpty { diskFeed?.recentlyUpdated.orEmpty() })
+        emitAndCache(merged.ifEmpty { disk })
     }.flowOn(Dispatchers.IO)
 
     override fun getHomeShelves(): Flow<List<HomeShelf>> = flow {
@@ -372,6 +380,11 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
     @Volatile private var cachedAhead: List<AiringAnime>? = null
     @Volatile private var aheadFetchedAt = 0L
 
+    /** Airing now, or released this year or last. */
+    private fun isCurrent(a: Anime): Boolean = isCurrentAnime(a, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+
+    private fun notYetOut(a: Anime): Boolean = a.status.contains("NOT_YET", ignoreCase = true) || a.status.contains("UPCOMING", ignoreCase = true)
+
     /** One shelf of anilight.live's home page, or empty when the site is unreachable. */
     private suspend fun aniLightSection(key: String): List<Anime> =
         try { backupAnimeApi.getAniLightHome()?.sections?.get(key).orEmpty() }
@@ -390,7 +403,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             emitAndCache(diskFeed.actionAnime)
         }
         try {
-            var list = try { aniListApi.getAnimeByGenre("Action") } catch (e: Exception) { emptyList() }
+            var list = try { aniListApi.getTrendingInGenre("Action").filterNot(::notYetOut) } catch (e: Exception) { emptyList() }
             if (list.isEmpty()) {
                 android.util.Log.i("DefaultAnimeRepository", "AniList action genre unavailable, trying backup API...")
                 list = backupAnimeApi.getActionAnime()
@@ -421,7 +434,7 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             emitAndCache(backupAnimeApi.deduplicateFranchises(diskFeed.romanceAnime))
         }
         try {
-            var list = try { aniListApi.getAnimeByGenre("Romance") } catch (e: Exception) { emptyList() }
+            var list = try { aniListApi.getTrendingInGenre("Romance").filterNot(::notYetOut) } catch (e: Exception) { emptyList() }
             if (list.isEmpty()) {
                 android.util.Log.i("DefaultAnimeRepository", "AniList romance genre unavailable, trying backup API...")
                 list = backupAnimeApi.getRomanceAnime()
@@ -1051,4 +1064,12 @@ class DefaultAnimeRepository(private val context: Context) : AnimeRepository {
             e.printStackTrace()
         }
     }
+}
+
+/** Airing now, or released in [year] or the year before. Shared by the Home rows that mean "now". */
+internal fun isCurrentAnime(a: Anime, year: Int): Boolean {
+    val s = a.status.uppercase()
+    if ("RELEASING" in s || "AIRING" in s || "ONGOING" in s) return true
+    if ("NOT_YET" in s || "UPCOMING" in s) return false
+    return (a.seasonYear ?: 0) >= year - 1
 }

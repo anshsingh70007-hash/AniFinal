@@ -65,10 +65,10 @@ fun PhoneSettingsScreen(
 
     Box(Modifier.fillMaxSize().background(TvTokens.Canvas)) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = LocalPhoneBottomInset.current + 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Settings", color = TvTokens.TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp))
             StatsHeader(c)
 
             Section("Playback")
@@ -83,6 +83,8 @@ fun PhoneSettingsScreen(
                 ToggleItem("Autoplay next episode", "Up Next countdown as the credits roll", c.autoplay, c::toggleAutoplay)
                 Divider()
                 ToggleItem("Skip intros and credits", "Jumps past openings and endings by itself", c.autoSkip, c::toggleAutoSkip)
+                Divider()
+                ToggleItem("Anime colour", "Richer colour, deeper blacks, cleaner whites, tuned for animation", c.animeColor, c::toggleAnimeColor)
             }
 
             Section("Experience")

@@ -137,6 +137,18 @@ class SettingsStore(
         activeDataStore.edit { it[navSoundsKey] = enabled }
     }
 
+    private val animeColorKey = booleanPreferencesKey("anime_color")
+
+    /**
+     * The anime colour grade on the player picture. Unset = the device default: on for phones,
+     * off for TVs, where it would take the video off the TV's own picture engine (its 4K upscaler).
+     */
+    fun animeColor(defaultOn: Boolean): Flow<Boolean> = activeDataStore.data.map { prefs -> prefs[animeColorKey] ?: defaultOn }
+
+    suspend fun setAnimeColor(enabled: Boolean) {
+        activeDataStore.edit { it[animeColorKey] = enabled }
+    }
+
     private val heroTrailersKey = booleanPreferencesKey("hero_trailers")
 
     /** Trailer previews behind the TV home billboard. On by default. */
@@ -165,6 +177,19 @@ class SettingsStore(
     }
 
     private fun decodeRecent(raw: String?): List<String> = raw?.split('\n')?.filter { it.isNotBlank() } ?: emptyList()
+
+    private val homeOrderKey = stringPreferencesKey("phone_home_order")
+
+    /** The phone Home sections in the order the person arranged them (section keys). Empty = default. */
+    val homeOrder: Flow<List<String>> = activeDataStore.data.map { prefs -> decodeRecent(prefs[homeOrderKey]) }
+
+    suspend fun setHomeOrder(keys: List<String>) {
+        activeDataStore.edit { it[homeOrderKey] = keys.joinToString("\n") }
+    }
+
+    suspend fun resetHomeOrder() {
+        activeDataStore.edit { it.remove(homeOrderKey) }
+    }
 
     private companion object { const val MAX_RECENT = 6 }
 }

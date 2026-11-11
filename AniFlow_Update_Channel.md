@@ -1,8 +1,9 @@
-# AniFlow update channel: shipping updates without GitHub
+# AniFlow update channel
 
-AniFlow updates itself from **its own signed update channel**: a few static files you upload to any HTTPS host, ideally two
-or more independent ones. GitHub isn't involved. Code: `data/update/UpdateChannel.kt` (check),
-`utils/AppUpdater.kt` (download + install), `tools/update_channel.py` (publish). Tests: `UpdateChannelTest` (19 cases).
+AniFlow updates itself from **its own signed update channel**, hosted on **GitHub Releases** of
+`anshsingh70007-hash/AniFinal`. Each release carries two files: the APK and a signed `update.json`. Code:
+`data/update/UpdateChannel.kt` (check), `utils/AppUpdater.kt` (download + install), `utils/InstallResultReceiver.kt`
+(the system's install answer), `tools/update_channel.py` (publish). Tests: `UpdateChannelTest` (19 cases).
 
 ## What was wrong before
 
@@ -16,7 +17,7 @@ or more independent ones. GitHub isn't involved. Code: `data/update/UpdateChanne
 ## How it holds up
 
 - **Signed manifest.** `update.json` is signed offline with ECDSA P-256. The public keys are compiled into the app, so a hacked, stale, mis-cached or seized mirror can't make an install do anything.
-- **Several mirrors.** The app asks every mirror in `UpdateConfig.MANIFEST_MIRRORS`; the newest validly signed answer wins. The APK is fetched from each mirror in turn. One host down means nothing to users.
+- **Mirrors.** The app asks every mirror in `UpdateConfig.MANIFEST_MIRRORS`; the newest validly signed answer wins. Today there is one (GitHub), so this protects only once a second is added.
 - **No replay.** Each manifest has a rising `sequence`, and an install never accepts one lower than the highest it has seen.
 - **The APK is pinned by size and SHA-256** from the signed manifest, and must also carry the release signing certificate, the right package and exactly the manifest's version code. Only then is Android asked to install it.
 - **Device check.** An update needing a newer Android than the device has is never offered, rather than offered and then failing.
@@ -38,60 +39,61 @@ private keys are also being synced to Microsoft's cloud. That counts as a backup
 compromised, so are the keys. Consider moving `keystore/` outside OneDrive. Gradle reads `keystore.properties`, and the
 tool reads `keystore/update-keys/`, so update those paths if you move it.
 
-## One-time setup (needs you: hosts are accounts in your name)
+## Hosting (since 2026-11-08)
 
-Chosen hosts, already compiled into 1.9.0 (both names were free on 2026-11-08):
+The only mirror compiled into the app (`UpdateConfig.MANIFEST_MIRRORS`, `tools/update_channel.json`):
 
-| Mirror | URL | Role |
-|---|---|---|
-| Cloudflare Pages | `https://aniflow-updates.pages.dev/update.json` | Primary. No bandwidth cap. Serves the APK and the welcome clips. |
-| Netlify | `https://aniflow-updates.netlify.app/update.json` | Independent fallback. Its free tier **pauses a site that exceeds its bandwidth allowance**, so the app never streams clips from it, and fetches the APK from it only if Cloudflare fails. |
+`https://github.com/anshsingh70007-hash/AniFinal/releases/latest/download/update.json`
 
-**The project names must be exactly `aniflow-updates`.** If either host gives you a different name (for example
-Cloudflare adds a suffix when a name is taken), stop and tell me. The URLs are compiled into the app, so they must match.
+`latest/download/` always points at the release marked **Latest**, and the APK is fetched from the same release by
+file name. Every redirect hop is HTTPS; `AppUpdater` follows redirects itself and refuses any non-HTTPS hop.
 
-1. **Cloudflare:** dash.cloudflare.com → Workers & Pages → Create → Pages → **Upload assets** → project name
-   `aniflow-updates` → drop the `dist/update` folder → Deploy.
-2. **Netlify:** app.netlify.com → Add new site → **Deploy manually** → drop the same `dist/update` folder. Then
-   Site configuration → Change site name → `aniflow-updates`.
-3. `python tools\update_channel.py verify --live`. Both mirrors must say ok.
-4. Do a real update test on a device. Only then distribute the 1.9.0 APK. From then on, every update flows through the channel.
-
-Later, a domain you own (around $10 a year) pointed at Cloudflare is the strongest setup. Add it as a **third** mirror
-in a release; remove a `*.dev`/`*.app` mirror only once every install in the field knows the domain.
-
-**Size limit:** Cloudflare Pages refuses the whole upload if any single file is over 25 MiB. The publish tool checks
-this. The welcome clips were re-encoded to fit.
+- **Single host.** If GitHub or the repo goes away, updates stop. A second mirror (a domain you own, ~$10/yr) can be
+  added in any release; it must be compiled in *before* it's needed. Cloudflare/Netlify were tried first and never went live.
+- **Package identity is `com.example.aniflow`** (standard flavour). The old `.redesign` 1.8.x app is a separate app; it
+  can't update in place. Its users reinstall and lose local lists.
+- The welcome clips are **inside the APK** (`res/raw`, 1080p, ~81 MB of the ~85 MB APK). Nothing streams from the host.
 
 ## Every release
 
+Ask the owner before creating the GitHub release or pushing to `main` (publishing is public).
+
 ```bat
-:: 1. bump versionCode (and versionName) in app/build.gradle.kts
-gradlew.bat assembleStandardRelease
-:: 2. write notes.txt (users see it), then:
-python tools\update_channel.py publish app\build\outputs\apk\standard\release\app-standard-release.apk --notes-file notes.txt --rollout 10
-:: 3. upload the whole dist\update\ folder to BOTH mirrors (Cloudflare: project → Create deployment; Netlify: Deploys → drag folder)
+:: 1. bump versionCode and versionName in app/build.gradle.kts, then build, test, lint
+gradlew.bat assembleStandardDebug testStandardDebugUnitTest lintStandardDebug assembleStandardRelease
+:: 2. write notes.txt (users see it). apksigner needs JAVA_HOME (Android Studio jbr) on PATH.
+python tools\update_channel.py publish app\build\outputs\apk\standard\release\app-standard-release.apk --notes-file notes.txt
+:: 3. publish both files as the new Latest release
+gh release create v<ver> dist\update\AniFlow-<ver>-<code>.apk dist\update\update.json --repo anshsingh70007-hash/AniFinal --target main --title "AniFlow <ver>" --notes-file release.md --latest
 python tools\update_channel.py verify --live
-:: 4. a day later, if nothing broke:
-python tools\update_channel.py set --rollout 100     (then upload and verify again)
+:: 4. point app_update.json (for 1.8.x installs) at the new APK and push it to main with the code
 ```
 
+- **Rollout / halt / maintenance** change only `update.json`: run `set ...`, then
+  `gh release upload v<current> dist\update\update.json --clobber`, then `verify --live`.
 - **Halt a bad release:** `set --halt`, upload. Nobody else gets prompted.
-- **Rollback:** Android can't install an older versionCode over a newer one. Rolling back means rebuilding the last good
-  code with a **higher** versionCode and publishing that. This is why the staged rollout matters.
-- **Maintenance:** `set --maintenance "Back at 6 PM" --hours 3`, then `set --clear-maintenance` when done (or let it expire).
-- **Force an update** (for example after a security fix): `publish ... --min-version <code>`. Installs below that code get no "Later" button.
+- **Rollback:** Android can't install an older versionCode over a newer one. Rebuild the last good code with a
+  **higher** versionCode and publish that.
+- **Maintenance:** `set --maintenance "Back at 6 PM" --hours 3`, then `set --clear-maintenance` (or let it expire).
+- **Force an update:** `publish ... --min-version <code>`. Installs below that code get no "Later" button.
+- **When users see it:** the app checks on a cold start, and Settings → "Check for updates" checks on demand.
+  TVs keep the app in memory, so a TV may not see a new release until the app restarts. (A check-on-reopen was
+  written and declined on 2026-11-08.)
 
-## Moving existing 1.8.x installs onto the channel
+## How installs happen
 
-Builds up to 1.8.8 still read `app_update.json` from GitHub. Before you stop using GitHub, change that file **once**,
-setting its `updateUrl` to the first channel build's APK on your new host. The old updater accepts any HTTPS URL and
-still checks the signing certificate. After those users update, GitHub is no longer involved. (Not done: it's a push to
-`main`, which needs your go-ahead.)
+1.9.1+ installs through a `PackageInstaller` session; `InstallResultReceiver` starts the system confirm screen. Android
+asks once per device to allow AniFlow to "install unknown apps". `ACTION_VIEW` is only a fallback. **1.9.0 is broken on
+TVs**: its button opens a browser (most TVs have none), so 1.9.0 TV users must install a newer APK by hand once.
+
+## Old installs
+
+`app_update.json` on `main` is read by the 1.8.x app. It points at the newest APK on GitHub Releases with notes saying
+it's a new app. Update it with every release.
 
 ## Limits, stated plainly
 
 - Android always shows its own install confirmation. Silent installs need Play, root or device-owner mode.
-- A build that crashes on startup can't fix itself. Staged rollout plus `--halt` is the defence: ship to a few first.
-- Checked so far: unit tests and the publish tool against a real release APK. **Not yet checked end to end on a device
-  against a live host**, because no host exists yet. Do that on step 4 of the setup, before distributing.
+- A build that crashes on startup can't fix itself. Staged rollout plus `--halt` is the defence.
+- Checked end to end on the TV emulator: 54 → 1.9.0 found and downloaded under R8 and reached the system installer.
+  The final "allow unknown apps → installed" step was not exercised by Claude (it's a security setting).

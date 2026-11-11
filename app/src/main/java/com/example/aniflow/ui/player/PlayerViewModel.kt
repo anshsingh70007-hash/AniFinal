@@ -90,7 +90,7 @@ class PlayerViewModel(
      */
     val embedUrl = MutableStateFlow<String?>(null)
 
-    private fun switchToEmbed(): Boolean {
+    private fun switchToEmbed(route: EmbedRoute? = null): Boolean {
         val a = anime.value ?: return false
         val ep = episodeList.value.getOrNull(currentEpisodeIndex.value) ?: return false
         // Native playback is down for everyone, not just this episode: skip the ~20 s failover
@@ -101,7 +101,66 @@ class PlayerViewModel(
         errorMessage.value = ""
         isLoading.value = false
         isBuffering.value = false
-        embedUrl.value = MegaPlayEmbed.url(a.id, ep.number, selectedAudioType.value)
+        val audio = selectedAudioType.value
+        val cont = prequelOf[a.id]?.pair
+        val r = (route ?: preferredRoute[a.id] ?: EmbedRoute.ANI).let {
+            when {
+                it == EmbedRoute.MAL && a.idMal == null -> EmbedRoute.ANI
+                it == EmbedRoute.PREQUEL && cont == null -> EmbedRoute.ANI
+                else -> it
+            }
+        }
+        currentRoute = r
+        embedUrl.value = when (r) {
+            // "#ep" keeps the real episode number readable from the URL (EmbedPlayer saves progress by it).
+            EmbedRoute.PREQUEL -> MegaPlayEmbed.malUrl(cont!!.first, ep.number + cont.second, audio) + "#ep${ep.number}"
+            EmbedRoute.MAL -> MegaPlayEmbed.malUrl(a.idMal!!, ep.number, audio)
+            EmbedRoute.ANI -> MegaPlayEmbed.url(a.id, ep.number, audio)
+        }
+        return true
+    }
+
+    private var currentRoute = EmbedRoute.ANI
+    private var attemptKey: Triple<Int, Int, AudioType>? = null
+    private val triedRoutes = mutableSetOf<EmbedRoute>()
+
+    /**
+     * MegaPlay showed its error page for this episode. Try the other places it files shows:
+     * - the MAL id: many sequels and older seasons (Gintama Season 2-4, Demon Slayer…) are only
+     *   filed under it;
+     * - the same-format prequel's MAL id with its episodes added: a split-cour Part 2 is often
+     *   filed as episodes 13+ of Part 1 (Attack on Titan Season 3 Part 2). Finding the prequel
+     *   takes one AniList call, so that answer comes later: [onNothing] runs if there is none.
+     * Each route is tried once per episode and audio. The one that loads becomes the show's first
+     * choice for its other episodes; a first choice that fails here loses that place.
+     * Returns false when there is nothing left to try.
+     */
+    fun embedFallback(onNothing: () -> Unit): Boolean {
+        val a = anime.value ?: return false
+        val ep = episodeList.value.getOrNull(currentEpisodeIndex.value) ?: return false
+        val key = Triple(a.id, ep.number, selectedAudioType.value)
+        if (key != attemptKey) { attemptKey = key; triedRoutes.clear() }
+        triedRoutes += currentRoute
+        if (preferredRoute[a.id] == currentRoute) preferredRoute.remove(a.id)
+        fun use(r: EmbedRoute): Boolean {
+            if (r != EmbedRoute.ANI) preferredRoute[a.id] = r
+            return switchToEmbed(r)
+        }
+        if (EmbedRoute.ANI !in triedRoutes) return use(EmbedRoute.ANI)
+        if (a.idMal != null && EmbedRoute.MAL !in triedRoutes) return use(EmbedRoute.MAL)
+        if (EmbedRoute.PREQUEL in triedRoutes) return false
+        val known = prequelOf[a.id]
+        if (known != null) {
+            if (known.pair == null) return false
+            return use(EmbedRoute.PREQUEL)
+        }
+        triedRoutes += EmbedRoute.PREQUEL
+        viewModelScope.launch {
+            val pre = withContext(ioDispatcher) { repository.getSamePrequel(a.id) }
+            prequelOf[a.id] = Prequel(pre)
+            if (attemptKey != key) return@launch
+            if (pre == null) onNothing() else use(EmbedRoute.PREQUEL)
+        }
         return true
     }
 
@@ -1106,6 +1165,12 @@ class PlayerViewModel(
         /** Process-wide on purpose: when native sources are down, they are down for every episode. */
         @Volatile private var nativeDownUntil = 0L
 
+        /** AniList ids MegaPlay only has under the MAL id. Process-wide so later episodes skip the error page. */
+        /** The route that last loaded for a show, when it isn't the AniList id. */
+        private val preferredRoute = java.util.concurrent.ConcurrentHashMap<Int, EmbedRoute>()
+        /** AniList prequel lookups, including "none". */
+        private val prequelOf = java.util.concurrent.ConcurrentHashMap<Int, Prequel>()
+
         /** Tests share one JVM; one test's embed fallback must not leak into the next. */
         @androidx.annotation.VisibleForTesting
         internal fun resetNativeBackoff() { nativeDownUntil = 0L }
@@ -1113,7 +1178,17 @@ class PlayerViewModel(
 }
 
 object MegaPlayEmbed {
-    /** MegaPlay's embed player keyed by AniList id (MAL ids return its error page). */
+    /** MegaPlay's embed player keyed by AniList id; most titles are filed under it. */
     fun url(anilistId: Int, episode: Int, audio: AudioType): String =
         "https://megaplay.buzz/stream/ani/$anilistId/$episode/${if (audio == AudioType.DUB) "dub" else "sub"}"
+
+    /** The same player keyed by MAL id: the only key MegaPlay files many sequels under. */
+    fun malUrl(malId: Int, episode: Int, audio: AudioType): String =
+        "https://megaplay.buzz/stream/mal/$malId/$episode/${if (audio == AudioType.DUB) "dub" else "sub"}"
 }
+
+/** Where on MegaPlay an episode is looked up: AniList id, MAL id, or as a continuation of the prequel. */
+internal enum class EmbedRoute { ANI, MAL, PREQUEL }
+
+/** A finished prequel lookup; [pair] is (prequel MAL id, its episode count) or null for none. */
+internal class Prequel(val pair: Pair<Int, Int>?)

@@ -85,7 +85,13 @@ fun MainNavigation() {
                         isTopDestination = backStack.size == 1
                     )
             }
-            entry<Detail> { detailKey ->
+            entry<Detail>(
+                // Phone: a card sheet that rises over Home and closes by pulling down (ui/phone/PhoneSheet).
+                metadata = if (deviceType == DeviceType.TV || isRedesign) emptyMap() else
+                    NavDisplay.transitionSpec(com.example.aniflow.ui.phone.PhoneSheetTransitions.open) +
+                        NavDisplay.popTransitionSpec(com.example.aniflow.ui.phone.PhoneSheetTransitions.close) +
+                        NavDisplay.predictivePopTransitionSpec(com.example.aniflow.ui.phone.PhoneSheetTransitions.predictiveClose)
+            ) { detailKey ->
                     if (deviceType == DeviceType.TV) {
                         // Remote-first detail: lazy episode ranges, Play focused on entry, focus
                         // returns to the played episode.
@@ -114,7 +120,7 @@ fun MainNavigation() {
                             },
                             onBack = { backStack.removeLastOrNull() }
                         )
-                    } else {
+                    } else com.example.aniflow.ui.phone.PhoneSheetDismiss(onDismiss = { if (backStack.lastOrNull() == detailKey) backStack.removeLastOrNull() }) {
                         DetailScreen(
                             animeId = detailKey.animeId,
                             repository = repository,

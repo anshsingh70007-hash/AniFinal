@@ -72,9 +72,9 @@ fun PhoneScheduleScreen(schedule: List<AiringAnime>, onOpenDetail: (Int) -> Unit
             )
         }
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Column(Modifier.padding(horizontal = 16.dp).padding(top = 20.dp)) {
-                Text("Schedule", color = TvTokens.TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        // The phone top bar shows "Schedule"; this keeps only the subtitle.
+        Column(Modifier.fillMaxSize()) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(top = 2.dp)) {
                 Text("This week's simulcasts, in your local time", color = TvTokens.TextSecondary, fontSize = 13.sp)
                 nextUp?.let {
                     Spacer(Modifier.height(12.dp))
@@ -125,7 +125,7 @@ fun PhoneScheduleScreen(schedule: List<AiringAnime>, onOpenDetail: (Int) -> Unit
                     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (split - 1).coerceAtLeast(0))
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = LocalPhoneBottomInset.current + 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {

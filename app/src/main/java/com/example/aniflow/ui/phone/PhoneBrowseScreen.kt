@@ -1,5 +1,7 @@
 package com.example.aniflow.ui.phone
 
+import androidx.compose.ui.focus.focusRequester
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,7 +38,18 @@ fun PhoneBrowseScreen(
     onAnimeClick: (Anime) -> Unit,
     recent: List<String> = emptyList(),
     onClearRecent: () -> Unit = {},
+    /** Bumped by the top bar's search button: focus the field (and raise the keyboard). */
+    focusSearch: Int = 0,
 ) {
+    val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    // Remember which press was handled, so coming back to this tab later doesn't pop the keyboard again.
+    var handledFocus by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(focusSearch) {
+        if (focusSearch > handledFocus) {
+            handledFocus = focusSearch
+            runCatching { searchFocus.requestFocus() }
+        }
+    }
     val genres = remember {
         listOf("Action", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Adventure", "Suspense", "Slice of Life")
     }
@@ -61,12 +74,12 @@ fun PhoneBrowseScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(PrimaryDark)
-            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 4.dp)
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(searchFocus),
             placeholder = { Text("Search anime by title…", color = TextTertiary) },
             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = TextSecondary) },
             trailingIcon = if (query.isNotEmpty()) {
@@ -192,6 +205,7 @@ fun PhoneBrowseScreen(
                 columns = GridCells.Adaptive(110.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = LocalPhoneBottomInset.current + 16.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(results) { anime ->

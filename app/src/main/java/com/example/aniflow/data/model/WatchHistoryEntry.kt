@@ -20,6 +20,10 @@ val WatchHistoryEntry.finished: Boolean get() = durationMs > 0 && progressMs >= 
 /** How many episodes are out past the one you were on, given the newest aired one; 0 when none. */
 fun WatchHistoryEntry.newEpisodes(latestAired: Int?): Int = latestAired?.let { (it - episodeNumber).coerceAtLeast(0) } ?: 0
 
+/** What to badge as new: only once the episode you were on is finished. Mid-episode on E1 of a long
+ *  show is not "1179 new episodes"; it is E1 with time left. */
+fun WatchHistoryEntry.freshEpisodes(latestAired: Int?): Int = if (finished) newEpisodes(latestAired) else 0
+
 /** The episode "continue" should open: the next one once this one is finished and it's out. */
 fun WatchHistoryEntry.continueEpisode(latestAired: Int?): Int =
     if (finished && newEpisodes(latestAired) > 0) episodeNumber + 1 else episodeNumber

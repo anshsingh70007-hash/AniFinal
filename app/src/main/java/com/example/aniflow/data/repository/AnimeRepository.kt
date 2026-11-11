@@ -29,6 +29,9 @@ interface AnimeRepository {
     /** Seasons, movies, OVAs, ONAs and specials of [id]'s franchise; empty when unavailable. */
     suspend fun getFranchise(id: Int): List<FranchiseEntry> = emptyList()
 
+    /** Same-format prequel of [id] as (MAL id, episodes), for streaming sites that file a Part 2 under Part 1. */
+    suspend fun getSamePrequel(id: Int): Pair<Int, Int>? = null
+
     /** AniList id -> that entry's own YouTube trailer id; empty when unavailable. */
     suspend fun getTrailers(ids: List<Int>): Map<Int, String> = emptyMap()
 

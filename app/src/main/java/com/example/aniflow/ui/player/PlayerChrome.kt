@@ -85,6 +85,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -491,9 +493,51 @@ internal fun BottomControls(
 @Composable
 internal fun CenterControls(playing: Boolean, actions: ChromeActions, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(44.dp)) {
-        ChromeButton(actions.back10, height = 56.dp) { GlyphIcon(Glyph.Back10, it, 40.dp) }
+        PhoneSkip10(forward = false, onClick = actions.back10)
         ChromeButton(actions.playPause, height = 76.dp) { PlayPauseIcon(playing, it, 52.dp) }
-        ChromeButton(actions.fwd10, height = 56.dp) { GlyphIcon(Glyph.Fwd10, it, 40.dp) }
+        PhoneSkip10(forward = true, onClick = actions.fwd10)
+    }
+}
+
+/**
+ * Motion board tile 23: the arrow turns 35° and springs back, "−10 s" floats up and fades in
+ * 720 ms, one CLOCK_TICK per press. Each press restarts it, so rapid presses stay readable.
+ */
+@Composable
+private fun PhoneSkip10(forward: Boolean, onClick: () -> Unit) {
+    val haptics = com.example.aniflow.ui.phone.motion.rememberHaptics()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val turn = remember { androidx.compose.animation.core.Animatable(0f) }
+    val rise = remember { androidx.compose.animation.core.Animatable(1f) }
+    Box(contentAlignment = Alignment.Center) {
+        ChromeButton({
+            haptics.clockTick()
+            scope.launch {
+                turn.snapTo(0f)
+                turn.animateTo(if (forward) 35f else -35f, tween(110))
+                turn.animateTo(0f, com.example.aniflow.ui.phone.motion.PhoneMotion.spring())
+            }
+            scope.launch {
+                rise.snapTo(0f)
+                rise.animateTo(1f, tween(720, easing = com.example.aniflow.ui.phone.motion.PhoneMotion.ArriveEasing))
+            }
+            onClick()
+        }, height = 56.dp) {
+            GlyphIcon(if (forward) Glyph.Fwd10 else Glyph.Back10, it, 40.dp, Modifier.graphicsLayer { rotationZ = turn.value })
+        }
+        Text(
+            if (forward) "+10 s" else "−10 s",
+            color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+            // Readable on a bright frame too.
+            style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 8f)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-26).dp)
+                .graphicsLayer {
+                    translationY = -rise.value * 14.dp.toPx()
+                    alpha = if (rise.value >= 1f) 0f else 1f - rise.value
+                }
+        )
     }
 }
 

@@ -60,6 +60,7 @@ class SettingsController internal constructor(
     var speed by mutableFloatStateOf(1f); internal set
     var autoplay by mutableStateOf(true); internal set
     var autoSkip by mutableStateOf(false); internal set
+    var animeColor by mutableStateOf(false); internal set
     var navSounds by mutableStateOf(true); internal set
     var checkOnStart by mutableStateOf(true); internal set
     var heroTrailers by mutableStateOf(true); internal set
@@ -88,6 +89,7 @@ class SettingsController internal constructor(
     fun selectAudio(value: String) { audio = value; scope.launch { settings.setLanguage(value) } }
     fun selectSpeed(value: Float) { speed = value; scope.launch { settings.setDefaultPlaybackSpeed(value) } }
     fun toggleAutoplay() { val v = !autoplay; autoplay = v; scope.launch { settings.setAutoPlayNextEpisode(v) } }
+    fun toggleAnimeColor() { val v = !animeColor; animeColor = v; scope.launch { settings.setAnimeColor(v) } }
     fun toggleAutoSkip() { val v = !autoSkip; autoSkip = v; scope.launch { settings.setAutoSkipIntro(v) } }
 
     // ---- interface ---------------------------------------------------------------------------
@@ -211,6 +213,7 @@ fun rememberSettingsController(
         launch { settingsStore.defaultPlaybackSpeed.collect { c.speed = it } }
         launch { settingsStore.autoPlayNextEpisode.collect { c.autoplay = it } }
         launch { settingsStore.autoSkipIntro.collect { c.autoSkip = it } }
+        launch { settingsStore.animeColor(animeColorDefault(context)).collect { c.animeColor = it } }
         launch { settingsStore.navSounds.collect { c.navSounds = it } }
         launch { settingsStore.checkUpdatesStartup.collect { c.checkOnStart = it } }
         launch { settingsStore.heroTrailers.collect { c.heroTrailers = it } }
@@ -220,3 +223,7 @@ fun rememberSettingsController(
     }
     return c
 }
+
+/** Anime colour is on by default on phones; on TVs it would bypass the TV's own picture engine. */
+fun animeColorDefault(context: android.content.Context): Boolean =
+    com.example.aniflow.DeviceDetector.detect(context) != com.example.aniflow.DeviceType.TV

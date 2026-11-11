@@ -475,7 +475,7 @@ class MainScreenViewModel(
                 streamSection("topRated", repository.getTopRated(), _topRated),
                 streamSection("upcoming", repository.getUpcoming(), _upcoming),
                 streamSection("action", repository.getActionAnime(), _actionAnime),
-                streamSection("romance", repository.getAnimeByGenre("Romance"), _romanceAnime),
+                streamSection("romance", repository.getRomanceAnime(), _romanceAnime),
                 streamSection("shelves", repository.getHomeShelves(), _shelves),
             )
             weekJob = loadWeekSchedule()

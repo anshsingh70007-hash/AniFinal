@@ -3,6 +3,7 @@ package com.example.aniflow.data
 import com.example.aniflow.data.model.WatchHistoryEntry
 import com.example.aniflow.data.model.continueEpisode
 import com.example.aniflow.data.model.finished
+import com.example.aniflow.data.model.freshEpisodes
 import com.example.aniflow.data.model.newEpisodes
 import com.example.aniflow.data.model.newEpisodesLabel
 import org.junit.Assert.assertEquals
@@ -26,6 +27,12 @@ class NewEpisodesTest {
         assertEquals(3, entry(5, 100_000).newEpisodes(8))
         assertEquals("New episode", newEpisodesLabel(1))
         assertEquals("3 new episodes", newEpisodesLabel(3))
+    }
+
+    @Test fun `badge new episodes only once yours is finished`() {
+        assertEquals(0, entry(1, 100_000).freshEpisodes(1180))     // mid E1 of a long show: not "1179 new"
+        assertEquals(1179, entry(1, 1_400_000).freshEpisodes(1180))
+        assertEquals(0, entry(5, 1_400_000).freshEpisodes(5))
     }
 
     @Test fun `finished means 90 percent`() {

@@ -11,7 +11,7 @@ today but was built fast and is structurally messy. The owner (Harmeet) has comm
 founder-level rebuild: audit → vision → phased implementation. He wants a serious, premium product
 on both form factors, using https://anilight.live/ as a *benchmark, not a template*.
 
-## Stack (v1.8.6 / versionCode 51)
+## Stack (v1.9.2 / versionCode 57, package `com.example.aniflow`)
 
 Single Gradle module `:app`. Kotlin 2.3.x, `jvmToolchain(17)`, minSdk 24, compile/targetSdk 36.
 Jetpack Compose (BOM 2026.03.01) + Material3. **Navigation3** (`rememberNavBackStack`, `NavDisplay`,
@@ -83,8 +83,10 @@ player over MegaPlay's embed (`ui/player/EmbedPlayer.kt` + `PlayerChrome.kt`), o
 (`data/Suggestions.kt`), and security/self-healing fixes — read `AniFlow_Revival_Session2.md` before
 touching any of those. The overnight pass (2026-11-08, same file, "Overnight pass" section) added
 Schedule (TV + phone, `ui/schedule/`), Library history tabs, recent searches, TV voice search, a new phone
-hero, and fixed home-feed staleness. All uncommitted; last state builds, 38/38 unit tests pass, lint 0 errors.
-The P0 table below is history, not a to-do list.
+hero, and fixed home-feed staleness. Session 3 (2026-11-08) built the signed update channel on GitHub Releases,
+switched the package to `com.example.aniflow`, bundled the welcome clips, and shipped 1.9.0 → 1.9.2 (live) — read
+`AniFlow_Revival_Session3.md` and `AniFlow_Update_Channel.md` before touching updates, first run or releases.
+All committed and pushed; GitHub `main` matches the local tree. The P0 table below is history, not a to-do list.
 
 ## P0 — the immediate task list
 

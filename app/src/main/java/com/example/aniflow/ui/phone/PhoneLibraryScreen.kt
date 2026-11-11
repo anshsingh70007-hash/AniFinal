@@ -63,12 +63,9 @@ fun PhoneLibraryScreen(
             )
         }
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Text(
-                "Library", color = TvTokens.TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(start = 16.dp, top = 20.dp)
-            )
-            Spacer(Modifier.height(12.dp))
+        // The phone top bar shows "Library"; no second title here.
+        Column(Modifier.fillMaxSize()) {
+            Spacer(Modifier.height(4.dp))
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Segment("My List", items.size, !showHistory) { showHistory = false }
                 Segment("History", recent.size, showHistory) { showHistory = true }
@@ -86,13 +83,13 @@ fun PhoneLibraryScreen(
                         columns = GridCells.Adaptive(110.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = LocalPhoneBottomInset.current + 16.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(items, key = { it.id }) { anime -> AnimePosterCard(anime = anime, onClick = { onAnimeClick(anime) }) }
                     }
                     else -> LazyColumn(
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = LocalPhoneBottomInset.current + 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {

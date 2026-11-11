@@ -1,5 +1,6 @@
 package com.example.aniflow.ui.tv.home
 
+import com.example.aniflow.ui.home.HomeRowSpec
 import com.example.aniflow.data.remote.MediaExtras
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.TransformOrigin
@@ -102,10 +103,11 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.example.aniflow.data.model.Anime
+import com.example.aniflow.data.model.AiringAnime
 import com.example.aniflow.data.model.WatchHistoryEntry
 import com.example.aniflow.data.model.continueEpisode
 import com.example.aniflow.data.model.finished
-import com.example.aniflow.data.model.newEpisodes
+import com.example.aniflow.data.model.freshEpisodes
 import com.example.aniflow.data.model.newEpisodesLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -145,6 +147,8 @@ fun TvHome(
     latestAired: Map<Int, Int> = emptyMap(),
     topPicks: List<Anime>,
     becauseYouWatched: Pair<String, List<Anime>>?,
+    airing: List<AiringAnime> = emptyList(),
+    userFeedbackList: List<com.example.aniflow.data.UserFeedback> = emptyList(),
     shelves: List<com.example.aniflow.data.repository.HomeShelf> = emptyList(),
     /** Settings > Trailer previews. */
     trailersEnabled: Boolean = true,
@@ -164,28 +168,32 @@ fun TvHome(
         (trending + popular + seasonal + topRated + recentlyUpdated + upcoming + actionAnime + romanceAnime + shelves.flatMap { it.items })
             .associateBy { it.id }
     }
-    val rows = remember(byId, history, latestAired, topPicks, becauseYouWatched, shelves) {
-        val mid = shelves.filter { !it.late }.map { HomeRow("shelf_" + it.key, it.title, it.items) }
-        val late = shelves.filter { it.late }.map { HomeRow("shelf_" + it.key, it.title, it.items) }
+    val rows = remember(byId, history, latestAired, topPicks, becauseYouWatched, shelves, airing, userFeedbackList) {
         val historyById = history.associateBy { it.animeId }
         val continueItems = history.sortedByDescending { it.lastWatchedTime }.map { h ->
             byId[h.animeId] ?: Anime(id = h.animeId, title = h.title, coverImage = h.coverImage)
         }
-        (listOf(
-            HomeRow("continue", "Continue Watching", continueItems, history = historyById, latest = latestAired),
-            HomeRow("picks", "Top Picks for You", topPicks),
-            HomeRow("because", "Because You Watched ${becauseYouWatched?.first.orEmpty()}", becauseYouWatched?.second.orEmpty()),
-            HomeRow("trending", "Trending Now", trending),
-            HomeRow("top10", "Top 10 Highest Rated", topRated.take(10), ranked = true),
-            HomeRow("seasonal", "Airing This Season", seasonal),
-            HomeRow("fresh", "Fresh Episodes", recentlyUpdated),
-        ) + mid + listOf(
-            HomeRow("popular", "All-Time Popular", popular),
-            HomeRow("action", "Adrenaline: Action", actionAnime),
-            HomeRow("romance", "Heart-Racing Romance", romanceAnime),
-        ) + late + listOf(
-            HomeRow("upcoming", "Coming Soon", upcoming),
-        )).filter { it.items.isNotEmpty() }.distinctBy { it.key }
+        // Same rows, names and order as the phone (HomeRowSpec); only the drawing differs.
+        val airingItems = airing.sortedBy { it.airingAt }.distinctBy { it.mediaId }.map { a ->
+            byId[a.mediaId] ?: Anime(id = a.mediaId, title = a.title, coverImage = a.coverImageUrl, status = "RELEASING")
+        }
+        val all = listOf(
+            HomeRow(HomeRowSpec.CONTINUE, HomeRowSpec.T_CONTINUE, continueItems, history = historyById, latest = latestAired),
+            HomeRow(HomeRowSpec.PICKS, HomeRowSpec.T_PICKS, topPicks),
+            HomeRow(HomeRowSpec.BECAUSE, HomeRowSpec.becauseTitle(becauseYouWatched?.first.orEmpty()), becauseYouWatched?.second.orEmpty()),
+            HomeRow(HomeRowSpec.AIRING, HomeRowSpec.T_AIRING, airingItems),
+            HomeRow(HomeRowSpec.YOUR_PICKS, HomeRowSpec.T_YOUR_PICKS, userFeedbackList.map { it.anime.toAnime() }.distinctBy { it.id }),
+            HomeRow(HomeRowSpec.TRENDING, HomeRowSpec.T_TRENDING, trending),
+            HomeRow(HomeRowSpec.FRESH, HomeRowSpec.T_FRESH, recentlyUpdated),
+            HomeRow(HomeRowSpec.POPULAR, HomeRowSpec.T_POPULAR, popular),
+            HomeRow(HomeRowSpec.TOP, HomeRowSpec.T_TOP, topRated, ranked = true),
+            HomeRow(HomeRowSpec.SEASONAL, HomeRowSpec.T_SEASONAL, seasonal),
+            HomeRow(HomeRowSpec.ACTION, HomeRowSpec.T_ACTION, actionAnime),
+            HomeRow(HomeRowSpec.ROMANCE, HomeRowSpec.T_ROMANCE, romanceAnime),
+            HomeRow(HomeRowSpec.UPCOMING, HomeRowSpec.T_UPCOMING, upcoming),
+        ) + shelves.map { HomeRow(HomeRowSpec.shelfKey(it), it.title, it.items) }
+        val rank = HomeRowSpec.order(shelves).withIndex().associate { it.value to it.index }
+        all.filter { it.items.isNotEmpty() }.distinctBy { it.key }.sortedBy { rank[it.key] ?: Int.MAX_VALUE }
     }
     // Spotlight: the hero rotates through a few trending titles with wide art while you sit on it.
     val spotlight = remember(trending, rows) {
@@ -789,10 +797,10 @@ private fun CardRow(
         ) {
             itemsIndexed(row.items, key = { _, a -> a.id }) { col, anime ->
                 val h = row.history[anime.id]
-                val newEps = h?.newEpisodes(row.latest[anime.id]) ?: 0
+                val newEps = h?.freshEpisodes(row.latest[anime.id]) ?: 0
                 ExpandingCard(
                     anime = anime,
-                    rank = if (row.ranked) col + 1 else null,
+                    rank = if (row.ranked && col < 10) col + 1 else null,  // numerals sized for 1-10
                     progress = h?.let { if (it.durationMs > 0) (it.progressMs.toFloat() / it.durationMs).coerceIn(0f, 1f) else null },
                     resumeLabel = h?.let { "E${it.episodeNumber}" },
                     caption = h?.let { e ->

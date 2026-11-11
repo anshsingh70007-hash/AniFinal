@@ -151,6 +151,102 @@ class AniListApi(private val client: HttpClient) {
         return parseAniListMedia(response)
     }
 
+    /**
+     * Episodes that actually went out in the last [hours], newest first, one card per show.
+     * That is what "fresh episodes" means. anilight.live's recentlyAddedEpisodes is its catalogue
+     * backfill (Shaman King 2001 and Squid Girl 2010 showed up the week they were uploaded).
+     * The long tail nobody follows (popularity < [minPopularity]) is left out.
+     */
+    suspend fun getFreshEpisodes(hours: Int = 72, minPopularity: Int = 2500, maxPages: Int = 3): List<Anime> {
+        val now = System.currentTimeMillis() / 1000
+        val query = """
+            query (${'$'}page: Int, ${'$'}from: Int, ${'$'}to: Int) {
+              Page (page: ${'$'}page, perPage: 50) {
+                pageInfo { hasNextPage }
+                airingSchedules (airingAt_greater: ${'$'}from, airingAt_lesser: ${'$'}to, sort: TIME_DESC) {
+                  media {
+                    $MEDIA_FIELDS
+                    isAdult
+                    popularity
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+        val out = LinkedHashMap<Int, Anime>()
+        for (page in 1..maxPages) {
+            val vars = buildJsonObject {
+                put("page", page)
+                put("from", JsonPrimitive(now - hours * 3600L))
+                put("to", JsonPrimitive(now))
+            }
+            val pageObj = queryAniList(query, vars)?.get("data")?.jsonObject?.get("Page")?.jsonObject ?: break
+            pageObj["airingSchedules"]?.jsonArray?.forEach { el ->
+                val media = el.jsonObject["media"]?.jsonObject ?: return@forEach
+                if (media["isAdult"]?.jsonPrimitive?.booleanOrNull == true) return@forEach
+                if (media["format"]?.jsonPrimitive?.contentOrNull == "MUSIC") return@forEach
+                if ((media["popularity"]?.jsonPrimitive?.intOrNull ?: 0) < minPopularity) return@forEach
+                val id = media["id"]?.jsonPrimitive?.intOrNull ?: return@forEach
+                if (id !in out) runCatching { mapMediaObjToAnime(media) }.getOrNull()?.let { out[id] = it }
+            }
+            if (pageObj["pageInfo"]?.jsonObject?.get("hasNextPage")?.jsonPrimitive?.booleanOrNull != true) break
+        }
+        return out.values.toList()
+    }
+
+    /**
+     * What people are watching in [genre] right now: AniList's trending score (community activity
+     * over the last few days), limited to shows from the last three years with a real audience.
+     * The all-time popularity sort just repeated "Popular all time" (Attack on Titan, Demon Slayer…).
+     */
+    suspend fun getTrendingInGenre(genre: String, perPage: Int = 20): List<Anime> {
+        val since = (Calendar.getInstance().get(Calendar.YEAR) - 3) * 10000
+        val query = """
+            query (${'$'}genre: String, ${'$'}perPage: Int, ${'$'}since: FuzzyDateInt) {
+              Page (page: 1, perPage: ${'$'}perPage) {
+                media (type: ANIME, genre_in: [${'$'}genre], sort: [TRENDING_DESC, POPULARITY_DESC], startDate_greater: ${'$'}since, popularity_greater: 8000, isAdult: false) {
+                  $MEDIA_FIELDS
+                }
+              }
+            }
+        """.trimIndent()
+        val vars = buildJsonObject {
+            put("genre", genre)
+            put("perPage", perPage)
+            put("since", since)
+        }
+        return parseAniListMedia(queryAniList(query, vars))
+    }
+
+    /**
+     * The direct PREQUEL of [id] in the same format, as (MAL id, episode count). Streaming sites
+     * often file a split-cour "Part 2" as episodes 13+ of Part 1 (Attack on Titan Season 3 Part 2
+     * is MAL 35760 episodes 13-22 on MegaPlay). Null when there is none, or it lacks either value.
+     */
+    suspend fun getSamePrequel(id: Int): Pair<Int, Int>? = runCatching {
+        val query = """
+            query (${'$'}id: Int) {
+              Media (id: ${'$'}id, type: ANIME) {
+                format
+                relations { edges { relationType(version: 2) node { type format idMal episodes } } }
+              }
+            }
+        """.trimIndent()
+        val media = queryAniList(query, buildJsonObject { put("id", id) })
+            ?.get("data")?.jsonObject?.get("Media")?.jsonObject ?: return@runCatching null
+        val format = media["format"]?.jsonPrimitive?.contentOrNull ?: return@runCatching null
+        media["relations"]?.jsonObject?.get("edges")?.jsonArray?.firstNotNullOfOrNull { e ->
+            val edge = e.jsonObject
+            val n = edge["node"]?.jsonObject
+            if (edge["relationType"]?.jsonPrimitive?.contentOrNull != "PREQUEL" || n == null ||
+                n["type"]?.jsonPrimitive?.contentOrNull != "ANIME" || n["format"]?.jsonPrimitive?.contentOrNull != format
+            ) return@firstNotNullOfOrNull null
+            val mal = n["idMal"]?.jsonPrimitive?.intOrNull ?: return@firstNotNullOfOrNull null
+            val eps = n["episodes"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: return@firstNotNullOfOrNull null
+            mal to eps
+        }
+    }.getOrNull()
+
     suspend fun getPopular(page: Int = 1, perPage: Int = 15): List<Anime> {
         val query = """
             query (${'$'}page: Int, ${'$'}perPage: Int) {
